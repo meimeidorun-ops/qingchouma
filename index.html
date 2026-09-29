@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="輕籌碼">
+<title>輕籌碼 — 台股籌碼看盤</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ================= HOME ================= -->
+  <section id="screen-home" class="screen active">
+    <div class="topbar">
+      <div class="title">輕籌碼</div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="btn-portfolio" aria-label="操作計畫">💼</button>
+      <button class="icon-btn" id="btn-settings">⚙</button>
+    </div>
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="搜尋股票代碼或名稱，例如 2330 或 台積電" autocomplete="off">
+    </div>
+    <div class="search-results" id="search-results"></div>
+
+    <div class="group-bar">
+      <div class="group-tabs" id="group-tabs"></div>
+      <button class="icon-btn" id="btn-group-menu" aria-label="管理清單">⋯</button>
+    </div>
+    <div class="wl-updated" id="wl-updated"></div>
+    <div class="watchlist" id="watchlist"></div>
+  </section>
+
+  <!-- ================= DETAIL ================= -->
+  <section id="screen-detail" class="screen">
+    <div class="detail-header">
+      <div class="dh-left"><button class="back-btn" id="btn-back">‹</button></div>
+      <div class="dh-center">
+        <button class="nav-btn" id="btn-prev" aria-label="上一檔">◀</button>
+        <div class="detail-title">
+          <div class="dt-name" id="dt-name">—</div>
+          <div class="dt-code" id="dt-code">—</div>
+        </div>
+        <button class="nav-btn" id="btn-next" aria-label="下一檔">▶</button>
+      </div>
+      <div class="dh-right">
+        <div class="detail-quote">
+          <div class="dq-price" id="dq-price">—</div>
+          <div class="dq-change" id="dq-change">—</div>
+        </div>
+        <button class="star-btn" id="btn-star">☆</button>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab-btn active" data-tab="rt">即時</button>
+      <button class="tab-btn" data-tab="kline">K 線</button>
+      <button class="tab-btn" data-tab="inst">法人買賣超</button>
+      <button class="tab-btn" data-tab="margin">資券</button>
+      <button class="tab-btn" data-tab="branch">分點</button>
+      <button class="tab-btn" data-tab="revenue">營收</button>
+      <button class="tab-btn" data-tab="profit">獲利</button>
+      <button class="tab-btn" data-tab="holders">大戶</button>
+    </div>
+
+    <div class="tab-content">
+      <div class="tab-pane active" id="pane-rt">
+        <div class="rt-stats" id="rt-stats"></div>
+        <div class="chart-container" id="chart-rt" style="height:340px"></div>
+        <p class="hint" id="rt-note" style="padding:8px 16px 24px"></p>
+      </div>
+
+      <div class="tab-pane" id="pane-kline">
+        <div class="range-bar" id="kline-interval">
+          <button class="range-btn active" data-interval="1d">日K</button>
+          <button class="range-btn" data-interval="60m">60分</button>
+          <button class="range-btn" data-interval="5m">5分</button>
+        </div>
+        <div class="range-bar" id="kline-range">
+          <button class="range-btn" data-range="60">3個月</button>
+          <button class="range-btn active" data-range="180">6個月</button>
+          <button class="range-btn" data-range="365">1年</button>
+          <button class="range-btn" data-range="730">2年</button>
+        </div>
+        <div class="range-bar" id="kline-layers">
+          <button class="range-btn active" data-layer="inst">法人</button>
+          <button class="range-btn" data-layer="bband">BB</button>
+          <button class="range-btn active" data-indicator="">無</button>
+          <button class="range-btn" data-indicator="kd">KD</button>
+          <button class="range-btn" data-indicator="macd">MACD</button>
+        </div>
+        <div class="legend-row">
+          <span><span class="dot" style="background:#f2c744"></span>MA5</span>
+          <span><span class="dot" style="background:#7aa2f7"></span>MA20</span>
+        </div>
+        <div class="chart-container tall" id="chart-kline"></div>
+      </div>
+
+      <div class="tab-pane" id="pane-inst">
+        <div class="range-bar" id="inst-range">
+          <button class="range-btn" data-range="30">1個月</button>
+          <button class="range-btn active" data-range="90">3個月</button>
+          <button class="range-btn" data-range="180">6個月</button>
+        </div>
+        <div class="range-bar" id="inst-unit" style="padding-top:0">
+          <button class="range-btn active" data-unit="1000">張數</button>
+          <button class="range-btn" data-unit="1">股數</button>
+        </div>
+        <div class="legend-row">
+          <span><span class="dot" style="background:#e6413c"></span>單日合計買超</span>
+          <span><span class="dot" style="background:#1fa363"></span>單日合計賣超</span>
+          <span><span class="dot" style="background:#f2c744"></span>累計買賣超(右軸)</span>
+        </div>
+        <div class="chart-container" id="chart-inst"></div>
+        <div class="section-label" id="inst-table-label">近期明細（張）</div>
+        <div class="table-wrap">
+          <table class="data-table compact" id="table-inst">
+            <thead><tr><th>日期</th><th>外資</th><th>投信</th><th>自營商</th><th>合計</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="pane-margin">
+        <div class="range-bar" id="margin-range">
+          <button class="range-btn" data-range="60">3個月</button>
+          <button class="range-btn active" data-range="180">6個月</button>
+          <button class="range-btn" data-range="365">1年</button>
+        </div>
+        <div class="legend-row">
+          <span><span class="dot" style="background:#e6413c"></span>融資餘額（右軸）</span>
+          <span><span class="dot" style="background:#1fa363"></span>融券餘額（左軸）</span>
+          <span><span class="dot" style="background:#c9d1d9"></span>股價</span>
+        </div>
+        <div class="chart-container" id="chart-margin"></div>
+        <div class="section-label">近期明細（張）</div>
+        <div class="table-wrap">
+          <table class="data-table compact" id="table-margin">
+            <thead><tr><th>日期</th><th>資增減</th><th>融資餘額</th><th>券增減</th><th>融券餘額</th><th>券資比</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="pane-branch">
+        <div class="range-bar" id="branch-range">
+          <button class="range-btn active" data-period="1">近1日</button>
+          <button class="range-btn" data-period="2">近5日</button>
+          <button class="range-btn" data-period="3">近10日</button>
+          <button class="range-btn" data-period="4">近20日</button>
+        </div>
+        <div class="branch-summary" id="branch-summary"></div>
+        <div id="branch-body"></div>
+        <div class="branch-note">資料來源：券商公開「主力進出」頁（買超／賣超前 15 名分點，單位：張）。盤後約傍晚更新。</div>
+      </div>
+
+      <div class="tab-pane" id="pane-revenue">
+        <div class="legend-row">
+          <span><span class="dot" style="background:#7aa2f7"></span>單月營收</span>
+          <span><span class="dot" style="background:#f2c744"></span>年增率 YoY%（右軸）</span>
+        </div>
+        <div class="chart-container" id="chart-revenue"></div>
+        <div class="section-label">近期明細（千元）</div>
+        <div class="table-wrap">
+          <table class="data-table compact" id="table-revenue">
+            <thead><tr><th>月份</th><th>營收</th><th>MoM%</th><th>YoY%</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="pane-profit">
+        <div class="legend-row">
+          <span><span class="dot" style="background:#e6413c"></span>EPS（元／季）</span>
+        </div>
+        <div class="chart-container" id="chart-profit"></div>
+
+        <div class="section-label">預估EPS（自行輸入）</div>
+        <div class="eps-edit-row">
+          <div class="eps-field">
+            <label>2026</label>
+            <input type="number" step="0.01" id="eps-2026-input" placeholder="—">
+          </div>
+          <div class="eps-field">
+            <label>2027</label>
+            <input type="number" step="0.01" id="eps-2027-input" placeholder="—">
+          </div>
+          <button class="save" id="btn-save-eps">儲存</button>
+        </div>
+        <div class="eps-pe-row" id="eps-pe-row"></div>
+        <p class="hint" id="eps-status"></p>
+
+        <div class="section-label">近期財報（億元）</div>
+        <div class="table-wrap">
+          <table class="data-table compact" id="table-profit">
+            <thead><tr><th>季度</th><th>營收</th><th>毛利</th><th>毛利率</th><th>稅後淨利</th><th>EPS</th><th>累計EPS</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="pane-holders">
+        <div class="hold-row">
+          <span class="hold-label big">大戶持股&gt;</span>
+          <div class="hold-opts" id="hold-big">
+            <button class="range-btn" data-v="100">100</button>
+            <button class="range-btn" data-v="200">200</button>
+            <button class="range-btn active" data-v="400">400</button>
+            <button class="range-btn" data-v="600">600</button>
+            <button class="range-btn" data-v="800">800</button>
+            <span class="hold-unit">張</span>
+          </div>
+        </div>
+        <div class="hold-row">
+          <span class="hold-label retail">散戶持股&lt;</span>
+          <div class="hold-opts" id="hold-retail">
+            <button class="range-btn" data-v="50">50</button>
+            <button class="range-btn" data-v="100">100</button>
+            <button class="range-btn" data-v="200">200</button>
+            <button class="range-btn active" data-v="400">400</button>
+            <span class="hold-unit">張</span>
+          </div>
+        </div>
+        <div class="range-bar" id="hold-mode" style="padding-top:0">
+          <button class="range-btn active" data-mode="pct">張數比例</button>
+          <button class="range-btn" data-mode="ppl">持股人數</button>
+        </div>
+        <div class="legend-row">
+          <span><span class="dot" style="background:#e6413c"></span>大戶（右軸）</span>
+          <span><span class="dot" style="background:#1fa363"></span>散戶（左軸）</span>
+          <span><span class="dot" style="background:#c9d1d9"></span>股價</span>
+        </div>
+        <div class="chart-container" id="chart-holders"></div>
+        <div class="section-label" id="hold-table-label">近期明細（週）</div>
+        <div class="table-wrap">
+          <table class="data-table compact" id="table-holders">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" style="padding:0 16px 24px">資料來源：集保結算所股權分散表（每週更新）。大戶＝持股超過所選張數的合計比例，散戶＝持股低於所選張數。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PORTFOLIO（操作計畫） ================= -->
+  <section id="screen-portfolio" class="screen">
+    <div class="topbar">
+      <button class="back-btn" id="btn-pf-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">操作計畫</div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="btn-pf-settings" aria-label="計畫規則">⚙</button>
+      <button class="icon-btn" id="btn-pf-add" aria-label="新增買進">＋</button>
+    </div>
+    <div class="pf-scroll">
+      <div id="pf-summary" class="pf-summary"></div>
+      <div id="pf-advice"></div>
+      <div class="range-bar" id="pf-tabs">
+        <button class="range-btn active" data-view="open">持有中</button>
+        <button class="range-btn" data-view="closed">已賣出</button>
+      </div>
+      <div id="pf-list"></div>
+    </div>
+  </section>
+
+  <div class="modal" id="modal"><div class="modal-card" id="modal-card"></div></div>
+
+  <!-- ================= SETTINGS ================= -->
+  <section id="settings-panel" class="settings-panel">
+    <div class="topbar">
+      <button class="back-btn" id="btn-settings-close" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">設定</div>
+    </div>
+    <div class="settings-body">
+      <label for="token-input">FinMind API Token（選填）</label>
+      <input type="text" id="token-input" placeholder="貼上你的 FinMind Token">
+      <p class="hint">
+        免登入每小時可查 300 次，註冊並填入 Token 後可提升到每小時 600 次。
+        前往 finmindtrade.com 免費註冊取得 Token。資料每日更新，盤中價格可能延遲。
+      </p>
+      <button class="save" id="btn-save-token">儲存</button>
+
+      <label for="import-input" style="margin-top:8px;">匯入自選股</label>
+      <textarea id="import-input" rows="4" placeholder="貼上股票代碼，用逗號或換行分隔，例如：2330,2454,2317" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);margin-bottom:10px;font-family:inherit;resize:vertical;"></textarea>
+      <button class="save" id="btn-import" style="background:var(--bg-elev);color:var(--text);border:1px solid var(--border);margin-bottom:8px;">匯入</button>
+      <p class="hint" id="import-status"></p>
+
+      <label for="anchors-input" style="margin-top:16px;">匯入定錨週報（標的＋預估EPS）</label>
+      <textarea id="anchors-input" rows="4" placeholder="打開定錨週報網頁，全選複製後貼在這裡" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);margin-bottom:10px;font-family:inherit;resize:vertical;"></textarea>
+      <button class="save" id="btn-anchors-parse" style="background:var(--bg-elev);color:var(--text);border:1px solid var(--border);margin-bottom:8px;">解析</button>
+      <div id="anchors-preview" class="hint"></div>
+      <button class="save" id="btn-anchors-apply" style="display:none;margin-top:8px;">確認加入／更新</button>
+      <p class="hint" id="anchors-status"></p>
+    </div>
+  </section>
+
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/backend.js"></script>
+<script src="js/indicators.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+<script src="js/tab-chips.js"></script>
+<script src="js/tab-fundamental.js"></script>
+<script src="js/import.js"></script>
+<script src="js/portfolio.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(reg => reg.update()).catch(() => {});
+  });
+  // A new version took over -> reload once so the new files are shown right away.
+  let reloaded = false;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
+}
+</script>
+</body>
+</html>

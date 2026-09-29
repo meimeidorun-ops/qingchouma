@@ -1,0 +1,294 @@
+// Wrapper around the Google Apps Script Web App that backs the shared
+// watchlist + EPS estimates (bound to the "定錨筆記本" Google Sheet).
+// This is also what 台股AI盯盤Agent polls to know what to monitor.
+
+const BACKEND_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzACbmPhOULGdJf2l60zeTGOKrPX9PtjAUvOf1xn8aAEQ1yV1FSyXhLt6yxkOprZTzt/exec';
+const BACKEND_DEFAULT_TOKEN = 'v6yu154h3dz9wiqcxl8omn0fsk2gprtb';
+
+function backendUrl() {
+  return localStorage.getItem('backend_url') || BACKEND_DEFAULT_URL;
+}
+function backendToken() {
+  return localStorage.getItem('backend_token') || BACKEND_DEFAULT_TOKEN;
+}
+
+// 快速後端（Netlify Function，functions/api.js）：報價、K線、走勢、分點、收盤價先走這裡（通常 < 1 秒），
+// 失敗或逾時才改走 Apps Script。本機測試（localhost）時直接呼叫線上網站的 Function。
+const FAST_URL = (/netlify\.app$/.test(location.hostname) ? '' : 'https://earnest-kashata-c95e54.netlify.app') + '/.netlify/functions/api';
+async function proxyGet(qs) {
+  if (localStorage.getItem('fast_off') !== '1') {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const json = await (await fetch(`${FAST_URL}?${qs}`, { signal: ctl.signal })).json();
+      if (json.status === 200 && json.data && !json.data.__error) return json;
+      console.warn('fast backend error, fallback to Apps Script', json.error);
+    } catch (e) {
+      console.warn('fast backend failed, fallback to Apps Script', e);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return gasGet(qs);
+}
+
+// Apps Script 偶爾（尤其同時多個請求時）回一頁 404 HTML，重試一次通常就好。
+async function gasGet(qs) {
+  for (let i = 0; ; i++) {
+    try {
+      return await (await fetch(`${backendUrl()}?${qs}`)).json();
+    } catch (e) {
+      if (i >= 1) throw e;
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+}
+
+function marketFor(stockId) {
+  const s = stockIndex.find(x => x.stock_id === stockId);
+  if (s && s.type === 'tpex') return 'TWO';
+  return 'TPE';
+}
+
+const Backend = {
+  async list() {
+    const json = await gasGet('action=list');
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    return json.data;
+  },
+
+  async upsert(stock, eps = {}) {
+    const body = {
+      action: 'upsert',
+      token: backendToken(),
+      stock_id: stock.stock_id,
+      stock_name: stock.stock_name,
+      market: stock.market || marketFor(stock.stock_id),
+    };
+    if (eps.eps2026 !== undefined) body.eps2026 = eps.eps2026;
+    if (eps.eps2027 !== undefined) body.eps2027 = eps.eps2027;
+    const res = await fetch(backendUrl(), { method: 'POST', body: JSON.stringify(body) });
+    return res.json();
+  },
+
+  async bulkUpsert(items) {
+    const res = await fetch(backendUrl(), {
+      method: 'POST',
+      body: JSON.stringify({ action: 'bulkUpsert', token: backendToken(), items }),
+    });
+    return res.json();
+  },
+
+  async remove(stockId) {
+    const res = await fetch(backendUrl(), {
+      method: 'POST',
+      body: JSON.stringify({ action: 'remove', token: backendToken(), stock_id: stockId }),
+    });
+    return res.json();
+  },
+
+  // Real-time-ish quotes proxied through the Apps Script backend (TWSE/TPEx
+  // MIS feed) since FinMind's free tier only has end-of-day prices.
+  // `stocks` is an array of {stock_id, market?}. Returns a map keyed by stock_id.
+  // Intraday bars ('5m' | '60m') via Apps Script -> Yahoo. Returns rows shaped like
+  // FinMind daily rows; `date` is a unix timestamp shifted into Taipei local time
+  // so lightweight-charts (which renders UTC) shows the right clock.
+  async kbar(stock, interval) {
+    const market = stock.market || marketFor(stock.stock_id);
+    const json = await proxyGet(`action=kbar&id=${encodeURIComponent(stock.stock_id)}&market=${market}&interval=${interval}`);
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    const { gmtoffset, bars } = json.data;
+    return bars.map(([t, o, h, l, c, v]) => ({
+      date: t + gmtoffset, open: o, max: h, min: l, close: c, Trading_Volume: v,
+    }));
+  },
+
+  // Daily bars via Apps Script -> Yahoo (上市/上櫃都有), shaped like FinMind TaiwanStockPrice rows
+  // ({date:'YYYY-MM-DD', open, max, min, close, Trading_Volume}). Saves FinMind quota.
+  async daily(stock, days = 240) {
+    const range = days <= 25 ? '1mo' : days <= 88 ? '3mo' : days <= 178 ? '6mo' : days <= 360 ? '1y' : days <= 725 ? '2y' : '5y';
+    const market = stock.market || marketFor(stock.stock_id);
+    const json = await proxyGet(`action=kbar&id=${encodeURIComponent(stock.stock_id)}&market=${market}&interval=1d&range=${range}`);
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    const { gmtoffset, bars } = json.data;
+    const since = daysAgo(days);
+    return bars.map(([t, o, h, l, c, v]) => ({
+      date: new Date((t + gmtoffset) * 1000).toISOString().slice(0, 10),
+      stock_id: stock.stock_id, open: o, max: h, min: l, close: c, Trading_Volume: v,
+    })).filter(r => r.date >= since);
+  },
+
+  // 分點進出（主力進出前 15 名）。period: 1=近1日 2=近5日 3=近10日 4=近20日。
+  async branch(stockId, period = 1) {
+    const json = await proxyGet(`action=branch&id=${encodeURIComponent(stockId)}&period=${period}`);
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    if (json.data && json.data.error) throw new Error(json.data.error);
+    return json.data;
+  },
+
+  // 單一分點在這檔股票的近期每日進出（只有快速後端有）。Returns {rows:[{date,buy,sell,net}], total}
+  async branchHist(stockId, bid) {
+    const json = await proxyGet(`action=branchHist&id=${encodeURIComponent(stockId)}&bid=${encodeURIComponent(bid)}`);
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    return json.data;
+  },
+
+  // Latest official close for many stocks in ONE request (TWSE + TPEx OpenAPI via Apps Script).
+  // Returns { id: {close, change, date, market} }.
+  async closeAll(ids) {
+    if (!ids.length) return {};
+    const json = await proxyGet(`action=closeAll&ids=${encodeURIComponent(ids.join(','))}`);
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    return json.data || {};
+  },
+
+  // Today's 1-minute bars via Apps Script -> Yahoo. `t` is a raw unix second.
+  async intraday(stock) {
+    const market = stock.market || marketFor(stock.stock_id);
+    const json = await proxyGet(`action=intraday&id=${encodeURIComponent(stock.stock_id)}&market=${market}`);
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    const { gmtoffset, prevClose, bars } = json.data;
+    return {
+      gmtoffset, prevClose,
+      bars: bars.map(([t, o, h, l, c, v]) => ({ t, open: o, high: h, low: l, close: c, vol: v })),
+    };
+  },
+
+  // Watchlist group layout ({groups:[{id,name,ids}]}) shared across devices.
+  async getGroups() {
+    const json = await gasGet('action=groups');
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    return json.data;
+  },
+
+  async setGroups(groups) {
+    const data = encodeURIComponent(JSON.stringify({ groups }));
+    const res = await fetch(`${backendUrl()}?action=setGroups&token=${encodeURIComponent(backendToken())}&data=${data}`);
+    return res.json();
+  },
+
+  // Weekly 集保股權分散表 (TDCC) via Apps Script. Returns [{d:'YYYYMMDD', pct:[15], ppl:[15]}]
+  // ascending. Cached locally for 6h; a stale copy is used if the fetch fails.
+  async holders(stockId, weeks = 26) {
+    const key = `holders_${stockId}_${weeks}`;
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+    if (cached && Date.now() - cached.t < 6 * 60 * 60 * 1000) return cached.data;
+    try {
+      const res = await fetch(`${backendUrl()}?action=holders&id=${encodeURIComponent(stockId)}&weeks=${weeks}`);
+      const json = await res.json();
+      if (json.status !== 200) throw new Error(json.error || 'backend error');
+      const data = json.data.weeks;
+      try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), data })); } catch (e) {}
+      return data;
+    } catch (e) {
+      if (cached) return cached.data;
+      throw e;
+    }
+  },
+
+  async quote(stocks) {
+    if (!stocks.length) return {};
+    const ids = stocks.map(s => `${s.market || marketFor(s.stock_id)}:${s.stock_id}`).join(',');
+    // 即時報價：Apps Script 和快速後端同時問。證交所 MIS（最即時）海外主機常連不上，所以：
+    // 誰先回「MIS 資料」就用誰；快速後端只拿到 Yahoo 時，再等 Apps Script 最多 3 秒，等不到就用 Yahoo。
+    // 舊版 Apps Script（沒有 date 欄位）沒成交時會回開盤價，不採用。
+    const qs = `action=quote&ids=${encodeURIComponent(ids)}`;
+    const timed = (url, ms) => {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), ms);
+      return fetch(url, { signal: ctl.signal }).then(r => r.json()).finally(() => clearTimeout(timer));
+    };
+    const good = j => {
+      const vals = j && j.status === 200 && j.data && !j.data.__error ? Object.values(j.data) : [];
+      return vals.length && vals.some(v => v && v.date) ? j.data : null;
+    };
+    const gas = timed(`${backendUrl()}?${qs}`, 12000).then(good).catch(() => null);
+    const fast = localStorage.getItem('fast_off') === '1' ? Promise.resolve(null)
+      : timed(`${FAST_URL}?${qs}`, 10000).then(good).catch(() => null);
+    const isMis = d => d && Object.values(d).some(v => v && v.src !== 'yahoo');
+    const data = await new Promise(resolve => {
+      let pending = 2, yahoo = null, waitTimer = null;
+      const done = d => { clearTimeout(waitTimer); resolve(d); };
+      const settle = d => {
+        pending--;
+        if (isMis(d)) return done(d);
+        if (d) {
+          yahoo = d;
+          if (!waitTimer) waitTimer = setTimeout(() => done(yahoo), 3000);
+        }
+        if (!pending) done(yahoo);
+      };
+      gas.then(settle);
+      fast.then(settle);
+    });
+    if (!data) throw new Error('quote unavailable');
+    return data;
+  },
+};
+
+// ---- 讀取加速：本機快取（stale-while-revalidate）----
+// Apps Script 每次回應約 1～10 秒，所以後端讀取一律先看手機裡的快取：
+// 夠新就直接用；舊了就去抓新的，但超過 raceMs 還沒回來就先顯示舊資料，新資料回來後存起來下次用。
+const BK = {
+  read(k) { try { return JSON.parse(localStorage.getItem('bk_' + k) || 'null'); } catch (e) { return null; } },
+  write(k, d) {
+    const v = JSON.stringify({ t: Date.now(), d });
+    try { localStorage.setItem('bk_' + k, v); } catch (e) {
+      try { Object.keys(localStorage).filter(x => x.startsWith('bk_')).forEach(x => localStorage.removeItem(x)); localStorage.setItem('bk_' + k, v); } catch (e2) {}
+    }
+  },
+  drop(prefix) { try { Object.keys(localStorage).filter(x => x.startsWith('bk_' + prefix)).forEach(x => localStorage.removeItem(x)); } catch (e) {} },
+};
+function bkHash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+// 先顯示了舊資料、新資料晚點才回來時，發出 'bk-fresh' 事件（detail = key），畫面可以馬上換成新的。
+function swr(key, ttlMs, raceMs, fetcher) {
+  const c = BK.read(key);
+  if (c && Date.now() - c.t < ttlMs && !twCrossedSession(c.t)) return Promise.resolve(c.d);
+  let servedStale = false;
+  const p = fetcher().then(d => {
+    BK.write(key, d);
+    if (servedStale) window.dispatchEvent(new CustomEvent('bk-fresh', { detail: key }));
+    return d;
+  });
+  if (!c) return p;
+  p.catch(() => {});
+  return Promise.race([p, new Promise(r => setTimeout(() => { servedStale = true; r(c.d); }, raceMs))]).catch(() => c.d);
+}
+// 台股盤中（週一～五 09:00～13:35 台北時間）資料變動快，快取時間縮短。
+function twMarketOpen() {
+  const n = new Date(Date.now() + 8 * 3600e3);
+  const d = n.getUTCDay(), m = n.getUTCHours() * 60 + n.getUTCMinutes();
+  return d >= 1 && d <= 5 && m >= 540 && m <= 815;
+}
+// 快取是在「今天開盤前 / 收盤前」存的，而現在已經過了那個時間點 → 視為過期（避免收盤後還看到盤中價）。
+function twCrossedSession(savedAt) {
+  const tw = t => new Date(t + 8 * 3600e3);
+  const now = tw(Date.now()), then = tw(savedAt);
+  const day = x => x.toISOString().slice(0, 10), min = x => x.getUTCHours() * 60 + x.getUTCMinutes();
+  if (now.getUTCDay() === 0 || now.getUTCDay() === 6) return false;
+  if (day(then) !== day(now)) return min(now) >= 540;
+  return [540, 811].some(b => min(then) < b && min(now) >= b);
+}
+(function wrapBackendWithCache() {
+  const raw = Object.assign({}, Backend);
+  const qKey = stocks => 'q_' + bkHash(stocks.map(s => s.stock_id).join(','));
+  Backend.quoteKey = qKey;
+  const qTtl = () => (twMarketOpen() ? 15e3 : 10 * 60e3);
+  Backend.list = () => swr('list', 60e3, 1500, raw.list);
+  Backend.getGroups = () => swr('groups', 60e3, 1500, raw.getGroups);
+  Backend.quote = stocks => swr(qKey(stocks), qTtl(), 1500, () => raw.quote(stocks));
+  Backend.quotePeek = stocks => { const c = BK.read(qKey(stocks)); return c ? c.d : null; };
+  Backend.quoteFresh = stocks => swr(qKey(stocks), qTtl(), 1e9, () => raw.quote(stocks));
+  Backend.closeAll = ids => swr('ca_' + bkHash(ids.join(',')), 30 * 60e3, 2000, () => raw.closeAll(ids));
+  Backend.daily = (stock, days) => swr(`d_${stock.stock_id}_${days}`, twMarketOpen() ? 5 * 60e3 : 60 * 60e3, 2000, () => raw.daily(stock, days));
+  Backend.kbar = (stock, iv) => swr(`k_${stock.stock_id}_${iv}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.kbar(stock, iv));
+  Backend.intraday = stock => swr(`i_${stock.stock_id}`, twMarketOpen() ? 15e3 : 30 * 60e3, 1500, () => raw.intraday(stock));
+  Backend.branch = (id, p) => swr(`b_${id}_${p}`, 30 * 60e3, 2000, () => raw.branch(id, p));
+  Backend.branchHist = (id, bid) => swr(`bh_${id}_${bid}`, 60 * 60e3, 3000, () => raw.branchHist(id, bid));
+  // 寫入後讓相關快取失效，下次讀到的是新資料
+  Backend.upsert = (...a) => raw.upsert(...a).finally(() => BK.drop('list'));
+  Backend.bulkUpsert = (...a) => raw.bulkUpsert(...a).finally(() => BK.drop('list'));
+  Backend.remove = (...a) => raw.remove(...a).finally(() => BK.drop('list'));
+  Backend.setGroups = (...a) => raw.setGroups(...a).finally(() => BK.drop('groups'));
+})();
