@@ -85,8 +85,11 @@ async function syncGroupsFromBackend() {
     normalizeGroups();
     saveGroups(false);
   } else {
+    // 後端沒有分頁資料：只有「這台裝置本來就有自己的分頁」才往上推。
+    // 新網址/新手機（本機沒存過 groups）絕不推，避免後端暫時出錯時用預設空分頁蓋掉「定錨」「我的持股」。
+    const hadLocal = !!loadGroupsLocal();
     normalizeGroups();
-    saveGroups(true);
+    saveGroups(hadLocal);
   }
 }
 
