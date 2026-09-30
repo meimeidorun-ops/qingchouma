@@ -422,6 +422,7 @@ async function refreshWatchlistQuotes(list = wlList) {
       return;
     }
     await paintWatchlistQuotes(list, quotes, false);  // 失敗時會改顯示收盤價，標籤上附失敗原因
+    if (failed && !/收盤價/.test($('#wl-updated').textContent)) paintQuoteTime({}, true);
   } finally {
     wlBusy = false;
   }
@@ -517,11 +518,17 @@ async function loadRealtime(silent = false) {
       Backend.quote([stock]).catch(() => ({})),
     ]);
     if (stock !== currentStock) return;
-    const q = quotes[stock.stock_id];
+    let q = quotes[stock.stock_id];
+    // 盤中拿到的報價卻不是今天的（手機裡的舊快取）→ 不用，改用今天的走勢資料
+    if (q && q.date && q.date !== twToday() && twMarketOpen()) q = null;
     const prev = (q && q.prevClose) || intra.prevClose;
 
+    const lastBar = intra.bars.length ? intra.bars[intra.bars.length - 1] : null;
     if (q && q.price != null) {
       applyHeaderQuote(q.price, q.change, q.changePercent);
+    } else if (lastBar && intra.prevClose) {
+      const chg = lastBar.close - intra.prevClose;
+      applyHeaderQuote(lastBar.close, chg, (chg / intra.prevClose) * 100);
     } else {
       const rows = await Api.daily(stock, 10).catch(() => []);
       if (rows.length) {
