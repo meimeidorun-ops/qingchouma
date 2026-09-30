@@ -179,13 +179,19 @@ async function withTodayBar(stock, rows) {
   if (rows[rows.length - 1].date >= day) return rows;
   const today = bars.filter(b => new Date((b.t + off) * 1000).toISOString().slice(0, 10) === day);
   if (!today.length) return rows;
+  // 量：1 分K 加總會漏掉收盤集合競價等，約只有實際的一半 → 有當天的即時報價（證交所累計量，單位張）就用它
+  let vol = today.reduce((a, b) => a + (b.vol || 0), 0);
+  let q = null;
+  try { q = await Backend.quote([stock]); } catch (e) {}
+  q = q && q[stock.stock_id];
+  if (q && q.vol && q.date === day.replace(/-/g, '')) vol = q.vol * 1000;
   return rows.concat([{
     date: day, stock_id: stock.stock_id,
     open: today[0].open,
     max: Math.max(...today.map(b => b.high)),
     min: Math.min(...today.map(b => b.low)),
     close: today[today.length - 1].close,
-    Trading_Volume: today.reduce((a, b) => a + (b.vol || 0), 0),
+    Trading_Volume: vol,
   }]);
 }
 
