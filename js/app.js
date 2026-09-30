@@ -406,15 +406,32 @@ async function refreshWatchlistQuotes(list = wlList) {
   wlBusy = true;
   try {
     let quotes = {};
+    let failed = false;
     try {
       quotes = await Backend.quoteFresh(list);
     } catch (e) {
+      failed = true;
       console.warn('live quote fetch failed', e);
     }
-    if (wlList === list) await paintWatchlistQuotes(list, quotes, false);
+    if (wlList !== list) return;
+    // 即時報價這次失敗、但手機裡已有「今天」的報價 → 保留它（別用昨天收盤價蓋掉），標示更新失敗，20 秒後會再試。
+    const cached = failed ? Backend.quotePeek(list) : null;
+    if (failed && cached && quotesAreToday(cached)) {
+      await paintWatchlistQuotes(list, cached, true);
+      paintQuoteTime(cached, true);
+      return;
+    }
+    await paintWatchlistQuotes(list, quotes, false);  // 失敗時會改顯示收盤價，標籤上附失敗原因
   } finally {
     wlBusy = false;
   }
+}
+
+function twToday() {
+  return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
+}
+function quotesAreToday(quotes) {
+  return Object.values(quotes || {}).some(q => q && q.date === twToday());
 }
 
 function homeActive() {
@@ -422,15 +439,18 @@ function homeActive() {
 }
 
 // 資料時間：顯示報價是幾點的，看得出是不是最新。
-function paintQuoteTime(quotes) {
+// failed=true：這次即時報價沒抓到，附上各來源狀態（例：Google 逾時／快速 抓不到），方便判斷是哪一段壞。
+function paintQuoteTime(quotes, failed = false) {
   const el = $('#wl-updated');
   if (!el) return;
+  const d = Backend.quoteDiag;
+  const why = failed && d ? `　⚠ 更新失敗（Google ${d.gas}、快速 ${d.fast}），稍後重試` : '';
   const vals = Object.values(quotes || {}).filter(q => q && q.time);
-  if (!vals.length) { el.textContent = ''; return; }
+  if (!vals.length) { el.textContent = why.trim(); return; }
   const q = vals.reduce((a, b) => ((a.date + a.time) >= (b.date + b.time) ? a : b));
-  const tw = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
-  const day = q.date && q.date !== tw ? `${q.date.slice(4, 6)}/${q.date.slice(6, 8)} ` : '';
-  el.textContent = `報價時間 ${day}${q.time}${twMarketOpen() ? '　盤中每 20 秒更新' : ''}`;
+  const day = q.date && q.date !== twToday() ? `${q.date.slice(4, 6)}/${q.date.slice(6, 8)} ` : '';
+  const src = vals.some(v => v.src === 'yahoo') ? '・Yahoo' : '・證交所';
+  el.textContent = `報價時間 ${day}${q.time}${src}${why || (twMarketOpen() ? '　盤中每 20 秒更新' : '')}`;
 }
 
 async function paintWatchlistQuotes(list, quotes, cachedOnly) {
@@ -460,7 +480,8 @@ async function paintWatchlistQuotes(list, quotes, cachedOnly) {
   const dates = Object.values(closes).map(c => String(c.date || '')).filter(Boolean).sort();
   if (lbl && !lbl.textContent && dates.length) {
     const d = dates[dates.length - 1];
-    lbl.textContent = `收盤價 ${d.slice(-4, -2)}/${d.slice(-2)}（即時報價暫時抓不到）`;
+    const g = Backend.quoteDiag;
+    lbl.textContent = `收盤價 ${d.slice(-4, -2)}/${d.slice(-2)}（即時報價暫時抓不到${g ? `：Google ${g.gas}、快速 ${g.fast}` : ''}）`;
   }
   for (const id of missing) {
     const el = $(`#wl-quote-${id}`);

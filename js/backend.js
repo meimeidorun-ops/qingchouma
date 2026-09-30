@@ -203,10 +203,19 @@ const Backend = {
       const vals = j && j.status === 200 && j.data && !j.data.__error ? Object.values(j.data) : [];
       return vals.length && vals.some(v => v && v.date) ? j.data : null;
     };
-    const gas = timed(`${backendUrl()}?${qs}`, 12000).then(good).catch(() => null);
-    const fast = localStorage.getItem('fast_off') === '1' ? Promise.resolve(null)
-      : timed(`${FAST_URL}?${qs}`, 10000).then(good).catch(() => null);
+    // 診斷：記下兩個來源各自的結果（ok-證交所 / ok-Yahoo / 逾時 / 錯誤），清單上方會顯示，出問題時看得出是哪一段壞。
+    const diag = { gas: '…', fast: '…', at: Date.now() };
+    Backend.quoteDiag = diag;
     const isMis = d => d && Object.values(d).some(v => v && v.src !== 'yahoo');
+    const label = (key, p) => p.then(j => {
+      const d = good(j);
+      diag[key] = d ? (isMis(d) ? '證交所' : 'Yahoo') : (j && j.data && j.data.__error ? '抓不到' : '無資料');
+      return d;
+    }).catch(e => { diag[key] = e && e.name === 'AbortError' ? '逾時' : '連線失敗'; return null; });
+    // Apps Script 在試算表重算或同時多個請求時可能要 20 秒以上，等久一點（期間畫面先顯示手機裡的報價）。
+    const gas = label('gas', timed(`${backendUrl()}?${qs}`, 25000));
+    const fast = localStorage.getItem('fast_off') === '1' ? (diag.fast = '關閉', Promise.resolve(null))
+      : label('fast', timed(`${FAST_URL}?${qs}`, 15000));
     const data = await new Promise(resolve => {
       let pending = 2, yahoo = null, waitTimer = null;
       const done = d => { clearTimeout(waitTimer); resolve(d); };
@@ -222,7 +231,7 @@ const Backend = {
       gas.then(settle);
       fast.then(settle);
     });
-    if (!data) throw new Error('quote unavailable');
+    if (!data) throw new Error(`quote unavailable (Google:${diag.gas} 快速:${diag.fast})`);
     return data;
   },
 };

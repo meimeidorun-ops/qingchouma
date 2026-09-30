@@ -28,6 +28,10 @@ html, body {
   max-width: 560px;
   margin: 0 auto;
   position: relative;
+  /* 加到主畫面後是全螢幕、狀態列透明（black-translucent），要讓出瀏海/狀態列和底部橫條的空間，
+     不然上方按鈕會被時間、電量蓋住點不到。一般瀏覽器裡這兩個值是 0，不影響。 */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .screen { display: none; flex-direction: column; flex: 1; min-height: 0; }
@@ -59,7 +63,7 @@ html, body {
 .search-box input:focus { outline: 1px solid var(--accent); }
 
 .search-results {
-  position: absolute; left: 0; right: 0; top: 96px; bottom: 0;
+  position: absolute; left: 0; right: 0; top: calc(96px + env(safe-area-inset-top, 0px)); bottom: 0;
   background: var(--bg); overflow-y: auto; z-index: 20; display: none;
 }
 .search-results.active { display: block; }
@@ -179,7 +183,7 @@ html, body {
 
 .modal { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; display: none; align-items: flex-end; }
 .modal.active { display: flex; }
-.modal-card { width: 100%; background: var(--bg-elev); border-radius: 14px 14px 0 0; padding: 16px 16px 24px; max-height: 80%; overflow-y: auto; }
+.modal-card { width: 100%; background: var(--bg-elev); border-radius: 14px 14px 0 0; padding: 16px 16px calc(24px + env(safe-area-inset-bottom, 0px)); max-height: 80%; overflow-y: auto; }
 .modal-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
 .modal-btn {
   display: block; width: 100%; padding: 13px; margin-bottom: 8px; border-radius: 10px; border: 1px solid var(--border);
@@ -226,6 +230,7 @@ html, body {
 
 .settings-panel {
   position: absolute; inset: 0; background: var(--bg); z-index: 30; display: none; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px); /* 蓋在整個 #app 上，也要讓出狀態列 */
 }
 .settings-panel.active { display: flex; }
 .settings-body { padding: 16px; overflow-y: auto; }
