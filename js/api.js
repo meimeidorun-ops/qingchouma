@@ -110,10 +110,10 @@ const Api = {
     const key = `yd_${stock.stock_id}_${days}`;
     try {
       const c = JSON.parse(sessionStorage.getItem(key) || 'null');
-      if (c && Date.now() - c.t < 10 * 60 * 1000) return c.data;
+      if (c && Date.now() - c.t < (twMarketOpen() ? 60 * 1000 : 10 * 60 * 1000) && !twCrossedSession(c.t)) return c.data;
     } catch (e) {}
     try {
-      const rows = await Backend.daily(stock, days);
+      const rows = await withTodayBar(stock, await Backend.daily(stock, days));
       if (rows.length) {
         try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), data: rows })); } catch (e) {}
         return rows;
@@ -165,6 +165,29 @@ const Api = {
     }, { ttlMs: 60 * 60 * 1000 });
   },
 };
+
+// Yahoo 的日K在當天（甚至收盤後好幾個小時）最後一根的 close 是 null，會被濾掉 → 日K少了今天。
+// 用當日 1 分K（即時走勢，同一來源、已有快取）組出這一根補上：開=第一筆、高低=極值、收=最後一筆、量=加總。
+async function withTodayBar(stock, rows) {
+  if (!rows.length) return rows;
+  let intra;
+  try { intra = await Backend.intraday(stock); } catch (e) { return rows; }
+  const bars = (intra && intra.bars) || [];
+  if (!bars.length) return rows;
+  const off = intra.gmtoffset || 28800;
+  const day = new Date((bars[bars.length - 1].t + off) * 1000).toISOString().slice(0, 10);
+  if (rows[rows.length - 1].date >= day) return rows;
+  const today = bars.filter(b => new Date((b.t + off) * 1000).toISOString().slice(0, 10) === day);
+  if (!today.length) return rows;
+  return rows.concat([{
+    date: day, stock_id: stock.stock_id,
+    open: today[0].open,
+    max: Math.max(...today.map(b => b.high)),
+    min: Math.min(...today.map(b => b.low)),
+    close: today[today.length - 1].close,
+    Trading_Volume: today.reduce((a, b) => a + (b.vol || 0), 0),
+  }]);
+}
 
 // HoldingSharesLevel looks like "1,000,001以上" / "400,001-600,000" — pull out
 // the lower bound so we can pick the big-holder tier without hardcoding the
