@@ -39,7 +39,9 @@ function makeChart(container, opts = {}) {
 
   const ro = new ResizeObserver(() => {
     chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-    if (chart._barCount) showAllBars(chart, chart._barCount);
+    // 自動更新時要保留使用者的縮放範圍（redrawKline 會設 _keepRange），否則照預設顯示全部
+    if (chart._keepRange) chart.timeScale().setVisibleLogicalRange(chart._keepRange);
+    else if (chart._barCount) showAllBars(chart, chart._barCount);
   });
   ro.observe(container);
   container._qcChart = chart;

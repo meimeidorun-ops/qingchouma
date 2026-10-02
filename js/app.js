@@ -637,7 +637,15 @@ function redrawKline(keepRange = false) {
     intraday: klineInterval !== '1d',
     visibleBars: { '60m': 100, '5m': 160 }[klineInterval],
   });
-  if (range && charts.kline) { try { charts.kline.timeScale().setVisibleLogicalRange(range); } catch (e) {} }
+  if (range && charts.kline) {
+    try {
+      const ch = charts.kline;
+      ch._keepRange = range;
+      ch.timeScale().setVisibleLogicalRange(range);
+      // 使用者之後自己捲動/縮放，就改記新的範圍
+      ch.timeScale().subscribeVisibleLogicalRangeChange(r => { if (r) ch._keepRange = r; });
+    } catch (e) {}
+  }
 }
 
 async function loadKline(silent = false) {
