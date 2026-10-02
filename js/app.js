@@ -78,8 +78,8 @@ function saveGroups(push = true) {
   }
 }
 
-async function syncGroupsFromBackend() {
-  const remote = await Backend.getGroups();
+async function syncGroupsFromBackend(remoteP) {
+  const remote = await (remoteP || Backend.getGroups());
   if (remote && Array.isArray(remote.groups) && remote.groups.length) {
     groups = remote.groups;
     normalizeGroups();
@@ -211,8 +211,8 @@ function renderGroupTabs() {
 // browser/device/URL starts with the same list. Local-only entries (e.g. a sync
 // that failed earlier) are pushed up so nothing is lost.
 async function syncWatchlistFromBackend() {
-  await ensureStockIndex();
-  const remote = await Backend.list();
+  // 股票名稱清單（FinMind）和後端清單（Apps Script，2～14 秒）同時抓
+  const [, remote] = await Promise.all([ensureStockIndex(), Backend.list()]);
   const local = getWatchlist();
   const remoteIds = new Set(remote.map(s => s.stock_id));
   const localIds = new Set(local.map(s => s.stock_id));
@@ -315,8 +315,10 @@ function prefetchStock(stock) {
     quiet(Api.institutional(stock.stock_id, instRange));
     quiet(Api.monthRevenue(stock.stock_id, 36));
     quiet(Api.financials(stock.stock_id, 3));
-    quiet(Api.daily(stock, klineRange)
-      .then(() => currentStock === stock && Backend.branch(stock.stock_id, branchPeriod)));
+    quiet(Api.daily(stock, klineRange).catch(() => {})
+      .then(() => currentStock === stock && Backend.branch(stock.stock_id, branchPeriod)).catch(() => {})
+      // 大戶（集保）走 Apps Script 很慢（首次 ~15 秒），排在最後背景先抓，點到頁籤時通常已經好了
+      .then(() => currentStock === stock && Backend.holders(stock.stock_id, 26)));
   }, 800);
 }
 
@@ -655,8 +657,11 @@ document.addEventListener('DOMContentLoaded', () => {
   renderWatchlist();
   // Order matters: merge the flat list first so group ids from the backend aren't pruned.
   (async () => {
+    // 清單和分頁同時向後端要（原本依序要，等兩次 Apps Script）；套用時仍先清單後分頁
+    const groupsP = Backend.getGroups();
+    groupsP.catch(() => {});
     try { await syncWatchlistFromBackend(); } catch (e) { console.warn('watchlist sync failed', e); }
-    try { await syncGroupsFromBackend(); } catch (e) { console.warn('groups sync failed', e); normalizeGroups(); saveGroups(false); }
+    try { await syncGroupsFromBackend(groupsP); } catch (e) { console.warn('groups sync failed', e); normalizeGroups(); saveGroups(false); }
     renderWatchlist();
   })();
 

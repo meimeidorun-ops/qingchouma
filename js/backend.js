@@ -237,24 +237,12 @@ const Backend = {
     return res.json();
   },
 
-  // Weekly 集保股權分散表 (TDCC) via Apps Script. Returns [{d:'YYYYMMDD', pct:[15], ppl:[15]}]
-  // ascending. Cached locally for 6h; a stale copy is used if the fetch fails.
+  // Weekly 集保股權分散表 (TDCC) via Apps Script. Returns [{d:'YYYYMMDD', pct:[15], ppl:[15]}] ascending.
+  // 快取在下方 wrapBackendWithCache（集保每週才更新一次：12 小時內直接用，舊的也先顯示再背景更新）。
   async holders(stockId, weeks = 26) {
-    const key = `holders_${stockId}_${weeks}`;
-    let cached = null;
-    try { cached = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
-    if (cached && Date.now() - cached.t < 6 * 60 * 60 * 1000) return cached.data;
-    try {
-      const res = await fetch(`${backendUrl()}?action=holders&id=${encodeURIComponent(stockId)}&weeks=${weeks}`);
-      const json = await res.json();
-      if (json.status !== 200) throw new Error(json.error || 'backend error');
-      const data = json.data.weeks;
-      try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), data })); } catch (e) {}
-      return data;
-    } catch (e) {
-      if (cached) return cached.data;
-      throw e;
-    }
+    const json = await gasGet(`action=holders&id=${encodeURIComponent(stockId)}&weeks=${weeks}`);
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    return json.data.weeks;
   },
 
   async quote(stocks) {
@@ -386,6 +374,9 @@ function twCrossedSession(savedAt) {
   Backend.kbar = (stock, iv) => swr(`k_${stock.stock_id}_${iv}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.kbar(stock, iv));
   Backend.intraday = stock => swr(`i_${stock.stock_id}`, twMarketOpen() ? 15e3 : 30 * 60e3, 1500, () => raw.intraday(stock));
   Backend.branch = (id, p) => swr(`b_${id}_${p}`, 30 * 60e3, 2000, () => raw.branch(id, p));
+  // 舊版大戶快取（holders_*）已不用，清掉避免佔手機空間
+  try { Object.keys(localStorage).filter(k => k.startsWith('holders_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+  Backend.holders = (id, w = 26) => swr(`h_${id}_${w}`, 12 * 3600e3, 1500, () => raw.holders(id, w));
   Backend.branchHist = (id, bid) => swr(`bh_${id}_${bid}`, 60 * 60e3, 3000, () => raw.branchHist(id, bid));
   // 寫入後讓相關快取失效，下次讀到的是新資料
   Backend.upsert = (...a) => raw.upsert(...a).finally(() => BK.drop('list'));
