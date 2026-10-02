@@ -287,8 +287,15 @@ async function openStock(stock) {
   rtHandle = null;
 
   stopRtTimer();
+  let klineTick = 0;
   rtTimer = setInterval(() => {
-    if (document.hidden || !$('#pane-rt').classList.contains('active')) return;
+    if (document.hidden) return;
+    // K 線頁：盤中每 60 秒自動更新（日K 最後一根、5分/60分）
+    if ($('#pane-kline').classList.contains('active')) {
+      if (twMarketOpen() && ++klineTick % 4 === 0) loadKline(true);
+      return;
+    }
+    if (!$('#pane-rt').classList.contains('active')) return;
     if (!twMarketOpen() && Date.now() - rtLastLoad < 120e3) return;
     loadRealtime(true);
   }, 15000);
@@ -445,12 +452,12 @@ function paintQuoteTime(quotes, failed = false) {
   const el = $('#wl-updated');
   if (!el) return;
   const d = Backend.quoteDiag;
-  const why = failed && d ? `　⚠ 更新失敗（Google ${d.gas}、快速 ${d.fast}），稍後重試` : '';
+  const why = failed && d ? `　⚠ 更新失敗（鉅亨 ${d.cnyes || '—'}、Google ${d.gas}、快速 ${d.fast}），稍後重試` : '';
   const vals = Object.values(quotes || {}).filter(q => q && q.time);
   if (!vals.length) { el.textContent = why.trim(); return; }
   const q = vals.reduce((a, b) => ((a.date + a.time) >= (b.date + b.time) ? a : b));
   const day = q.date && q.date !== twToday() ? `${q.date.slice(4, 6)}/${q.date.slice(6, 8)} ` : '';
-  const src = vals.some(v => v.src === 'yahoo') ? '・Yahoo' : '・證交所';
+  const src = vals.some(v => v.src === 'yahoo') ? '・Yahoo' : vals.some(v => v.src === 'cnyes') ? '・鉅亨' : '・證交所';
   el.textContent = `報價時間 ${day}${q.time}${src}${why || (twMarketOpen() ? '　盤中每 20 秒更新' : '')}`;
 }
 
@@ -482,7 +489,7 @@ async function paintWatchlistQuotes(list, quotes, cachedOnly) {
   if (lbl && !lbl.textContent && dates.length) {
     const d = dates[dates.length - 1];
     const g = Backend.quoteDiag;
-    lbl.textContent = `收盤價 ${d.slice(-4, -2)}/${d.slice(-2)}（即時報價暫時抓不到${g ? `：Google ${g.gas}、快速 ${g.fast}` : ''}）`;
+    lbl.textContent = `收盤價 ${d.slice(-4, -2)}/${d.slice(-2)}（即時報價暫時抓不到${g ? `：鉅亨 ${g.cnyes || '—'}、Google ${g.gas}、快速 ${g.fast}` : ''}）`;
   }
   for (const id of missing) {
     const el = $(`#wl-quote-${id}`);
@@ -594,9 +601,10 @@ function redrawKline() {
   });
 }
 
-async function loadKline() {
+async function loadKline(silent = false) {
   const container = $('#chart-kline');
-  container.innerHTML = '<div class="loading">載入中…</div>';
+  const stock = currentStock;
+  if (!silent || !klineData.price.length) container.innerHTML = '<div class="loading">載入中…</div>';
   try {
     const intraday = klineInterval !== '1d';
     // Daily rows always drive the header (prev-close fallback); intraday bars only draw the chart.
@@ -605,6 +613,7 @@ async function loadKline() {
       intraday ? Promise.resolve([]) : Api.institutional(currentStock.stock_id, klineRange).catch(() => []),
       intraday ? Backend.kbar(currentStock, klineInterval) : Promise.resolve(null),
     ]);
+    if (stock !== currentStock) return;
     if (!priceRows.length) { container.innerHTML = '<div class="error-msg">查無資料</div>'; return; }
     const drawRows = chartRows || priceRows;
     if (!drawRows.length) { container.innerHTML = '<div class="error-msg">查無分K資料</div>'; return; }
@@ -621,7 +630,7 @@ async function loadKline() {
     try {
       const quotes = await Backend.quote([currentStock]);
       const q = quotes[currentStock.stock_id];
-      if (q && q.price != null) {
+      if (q && q.price != null && !(q.date && q.date !== twToday() && twMarketOpen())) {
         price = q.price;
         change = q.change;
         pct = q.changePercent;
@@ -661,6 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (Date.now() - hiddenAt < 5000) return;
     if (homeActive()) refreshWatchlistQuotes();
     else if (currentStock && $('#screen-detail').classList.contains('active') && $('#pane-rt').classList.contains('active')) loadRealtime(true);
+    else if (currentStock && $('#screen-detail').classList.contains('active') && $('#pane-kline').classList.contains('active')) loadKline(true);
   };
   document.addEventListener('visibilitychange', onResume);
   window.addEventListener('pageshow', e => { if (e.persisted) { hiddenAt = 0; onResume(); } });

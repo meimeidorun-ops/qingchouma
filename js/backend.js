@@ -32,6 +32,70 @@ async function proxyGet(qs) {
   return gasGet(qs);
 }
 
+// ---- 鉅亨網（cnyes）行情 API：手機直接抓（有 CORS `*`），不經 Google / Netlify，通常 < 0.3 秒 ----
+// 2026-10-02 起報價、即時走勢、日K 優先走這裡；失敗才退回原本的路線。上市/上櫃/ETF 都用 TWS:代號:STOCK；興櫃沒有。
+// 量的單位是「張」，App 其他地方用「股」，所以 ×1000。（非官方公開 API，對方改版可能失效 → 有備援）
+const CNYES = 'https://ws.api.cnyes.com/ws/api';
+const cnyesSym = id => `TWS:${id}:STOCK`;
+async function cnyesGet(path, ms = 6000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const j = await (await fetch(CNYES + path, { signal: ctl.signal })).json();
+    if (j.statusCode !== 200) throw new Error('cnyes ' + (j.message || j.statusCode));
+    return j.data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const twTime = sec => { const s = new Date((sec + 28800) * 1000).toISOString(); return { date: s.slice(0, 10), ymd: s.slice(0, 10).replace(/-/g, ''), hms: s.slice(11, 19) }; };
+async function cnyesQuotes(stocks) {
+  const ids = [...new Set(stocks.map(s => s.stock_id))];
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
+  const out = {};
+  await Promise.all(chunks.map(async c => {
+    const data = await cnyesGet('/v2/quote/quotes/' + c.map(cnyesSym).join(','));
+    for (const d of data || []) {
+      const id = d['200010'];
+      if (!id || d['6'] == null) continue;
+      const t = twTime(d['200007']);
+      out[id] = {
+        price: d['6'], prevClose: d['21'], change: d['11'], changePercent: d['56'],
+        open: d['19'], high: d['12'], low: d['13'], vol: d['200013'],
+        date: t.ymd, time: t.hms, name: d['200009'], src: 'cnyes',
+      };
+    }
+  }));
+  return out;
+}
+// 歷史 K：cnyes 回傳由新到舊的平行陣列 {t,o,h,l,c,v}；轉成由舊到新
+function cnyesRows(d) {
+  const rows = [];
+  for (let i = (d.t || []).length - 1; i >= 0; i--) {
+    if (d.c[i] == null || d.o[i] == null) continue;
+    rows.push({ t: d.t[i], o: d.o[i], h: d.h[i], l: d.l[i], c: d.c[i], v: (d.v[i] || 0) * 1000 });
+  }
+  return rows;
+}
+async function cnyesIntraday(stockId) {
+  const now = Math.floor(Date.now() / 1000);
+  const d = await cnyesGet(`/v1/charting/history?resolution=1&symbol=${cnyesSym(stockId)}&from=${now}&to=${now - 86400 * 6}&quote=1`);
+  const bars = cnyesRows(d).map(r => ({ t: r.t, open: r.o, high: r.h, low: r.l, close: r.c, vol: r.v }));
+  if (!bars.length) throw new Error('cnyes intraday empty');
+  return { gmtoffset: 28800, prevClose: (d.quote && d.quote['21']) || null, bars };
+}
+async function cnyesDaily(stock, days) {
+  const now = Math.floor(Date.now() / 1000);
+  const d = await cnyesGet(`/v1/charting/history?resolution=D&symbol=${cnyesSym(stock.stock_id)}&from=${now}&to=${now - 86400 * (days + 10)}`);
+  const since = daysAgo(days);
+  const rows = cnyesRows(d).map(r => ({
+    date: twTime(r.t).date, stock_id: stock.stock_id, open: r.o, max: r.h, min: r.l, close: r.c, Trading_Volume: r.v,
+  })).filter(r => r.date >= since);
+  if (!rows.length) throw new Error('cnyes daily empty');
+  return rows;
+}
+
 // Apps Script 偶爾（尤其同時多個請求時）回一頁 404 HTML，重試一次通常就好。
 async function gasGet(qs) {
   for (let i = 0; ; i++) {
@@ -106,6 +170,9 @@ const Backend = {
   // Daily bars via Apps Script -> Yahoo (上市/上櫃都有), shaped like FinMind TaiwanStockPrice rows
   // ({date:'YYYY-MM-DD', open, max, min, close, Trading_Volume}). Saves FinMind quota.
   async daily(stock, days = 240) {
+    if (localStorage.getItem('cnyes_off') !== '1') {
+      try { return await cnyesDaily(stock, days); } catch (e) { console.warn('cnyes daily failed, fallback', e); }
+    }
     const range = days <= 25 ? '1mo' : days <= 88 ? '3mo' : days <= 178 ? '6mo' : days <= 360 ? '1y' : days <= 725 ? '2y' : '5y';
     const market = stock.market || marketFor(stock.stock_id);
     const json = await proxyGet(`action=kbar&id=${encodeURIComponent(stock.stock_id)}&market=${market}&interval=1d&range=${range}`);
@@ -144,6 +211,9 @@ const Backend = {
 
   // Today's 1-minute bars via Apps Script -> Yahoo. `t` is a raw unix second.
   async intraday(stock) {
+    if (localStorage.getItem('cnyes_off') !== '1') {
+      try { return await cnyesIntraday(stock.stock_id); } catch (e) { console.warn('cnyes intraday failed, fallback', e); }
+    }
     const market = stock.market || marketFor(stock.stock_id);
     const json = await proxyGet(`action=intraday&id=${encodeURIComponent(stock.stock_id)}&market=${market}`);
     if (json.status !== 200) throw new Error(json.error || 'backend error');
@@ -189,6 +259,22 @@ const Backend = {
 
   async quote(stocks) {
     if (!stocks.length) return {};
+    // 先問鉅亨（手機直連、最快）；拿到大部分（≥70%，興櫃本來就沒有）就直接用。
+    if (localStorage.getItem('cnyes_off') !== '1') {
+      try {
+        const c = await cnyesQuotes(stocks);
+        const n = Object.keys(c).length;
+        if (n && n >= Math.ceil(stocks.length * 0.7)) {
+          Backend.quoteDiag = { cnyes: '鉅亨', gas: '—', fast: '—', at: Date.now() };
+          return c;
+        }
+        Backend.quoteDiag = { cnyes: `只拿到 ${n}/${stocks.length}` };
+      } catch (e) {
+        Backend.quoteDiag = { cnyes: e && e.name === 'AbortError' ? '逾時' : '失敗' };
+        console.warn('cnyes quote failed, fallback', e);
+      }
+    }
+    const cnyesState = (Backend.quoteDiag || {}).cnyes || '關閉';
     const ids = stocks.map(s => `${s.market || marketFor(s.stock_id)}:${s.stock_id}`).join(',');
     // 即時報價：Apps Script 和快速後端同時問。證交所 MIS（最即時）海外主機常連不上，所以：
     // 誰先回「MIS 資料」就用誰；快速後端只拿到 Yahoo 時，再等 Apps Script 最多 3 秒，等不到就用 Yahoo。
@@ -204,7 +290,7 @@ const Backend = {
       return vals.length && vals.some(v => v && v.date) ? j.data : null;
     };
     // 診斷：記下兩個來源各自的結果（ok-證交所 / ok-Yahoo / 逾時 / 錯誤），清單上方會顯示，出問題時看得出是哪一段壞。
-    const diag = { gas: '…', fast: '…', at: Date.now() };
+    const diag = { cnyes: cnyesState, gas: '…', fast: '…', at: Date.now() };
     Backend.quoteDiag = diag;
     const isMis = d => d && Object.values(d).some(v => v && v.src !== 'yahoo');
     const label = (key, p) => p.then(j => {
@@ -296,7 +382,7 @@ function twCrossedSession(savedAt) {
     return raw.quote(stocks).then(d => { BK.write(k, d); return d; });
   };
   Backend.closeAll = ids => swr('ca_' + bkHash(ids.join(',')), 30 * 60e3, 2000, () => raw.closeAll(ids));
-  Backend.daily = (stock, days) => swr(`d_${stock.stock_id}_${days}`, twMarketOpen() ? 5 * 60e3 : 60 * 60e3, 2000, () => raw.daily(stock, days));
+  Backend.daily = (stock, days) => swr(`d_${stock.stock_id}_${days}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.daily(stock, days));
   Backend.kbar = (stock, iv) => swr(`k_${stock.stock_id}_${iv}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.kbar(stock, iv));
   Backend.intraday = stock => swr(`i_${stock.stock_id}`, twMarketOpen() ? 15e3 : 30 * 60e3, 1500, () => raw.intraday(stock));
   Backend.branch = (id, p) => swr(`b_${id}_${p}`, 30 * 60e3, 2000, () => raw.branch(id, p));
