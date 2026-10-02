@@ -170,6 +170,9 @@ const Api = {
 // 用當日 1 分K（即時走勢，同一來源、已有快取）組出這一根補上：開=第一筆、高低=極值、收=最後一筆、量=加總。
 async function withTodayBar(stock, rows) {
   if (!rows.length) return rows;
+  // 日K 已經有今天那根（鉅亨的日K 會含當天）→ 不用再抓分時和報價來補
+  const todayTw = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+  if (rows[rows.length - 1].date >= todayTw) return rows;
   let intra;
   try { intra = await Backend.intraday(stock); } catch (e) { return rows; }
   const bars = (intra && intra.bars) || [];

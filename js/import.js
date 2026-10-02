@@ -6,7 +6,8 @@
 // Only blocks with such a 2026/2027 EPS pair are picked up.
 const ANCHORS_NUM = '[\\-−]?[0-9]+(?:\\.[0-9]+)?';
 const ANCHORS_VAL = `(${ANCHORS_NUM}(?:\\s*[~～]\\s*${ANCHORS_NUM})?)`;
-const ANCHORS_EPS_RE = new RegExp(`2026\\s*\\/\\s*2027\\s*年?[^0-9\\n]{0,6}?EPS[^0-9\\-−]{0,8}${ANCHORS_VAL}\\s*\\/\\s*${ANCHORS_VAL}`);
+// 年份不寫死：抓「YYYY/YYYY 年…EPS…」裡的兩個年份（2026-10-03 起；定錨明年會改成 2027/2028）
+const ANCHORS_EPS_RE = new RegExp(`(20\\d\\d)\\s*\\/\\s*(20\\d\\d)\\s*年?[^0-9\\n]{0,6}?EPS[^0-9\\-−]{0,8}${ANCHORS_VAL}\\s*\\/\\s*${ANCHORS_VAL}`);
 function anchorsMid(s) {
   const p = String(s).replace(/−/g, '-').split(/\s*[~～]\s*/).map(parseFloat);
   return p.length === 2 ? Math.round((p[0] + p[1]) / 2 * 100) / 100 : p[0];
@@ -22,40 +23,54 @@ function parseAnchorsReport(text) {
   heads.forEach((h, i) => {
     const block = text.slice(h.start, i + 1 < heads.length ? heads[i + 1].start : text.length);
     const e = ANCHORS_EPS_RE.exec(block);
-    if (!e) return;
+    if (!e || Number(e[2]) !== Number(e[1]) + 1) return;
     items.push({
       stock_id: h.id, stock_name: h.name,
-      eps2026: anchorsMid(e[1]), eps2027: anchorsMid(e[2]),
+      year: Number(e[1]), epsA: anchorsMid(e[3]), epsB: anchorsMid(e[4]),
     });
   });
   return items;
 }
 
 let anchorsPending = [];
+let anchorsYear = 2026;    // 後端目前 EPS 第一年
+let anchorsRollTo = null;  // 週報是新年度時要切換到的年份
 
-async function applyAnchorsItems(items) {
+// 後端目前的 EPS 第一年（清單每列都帶 epsYear；舊後端沒有就當 2026）
+async function backendEpsYear() {
+  const list = await Backend.list();
+  const y = list.length && list[0].epsYear;
+  return Number(y) || 2026;
+}
+
+// items: [{stock_id, stock_name, year, epsA, epsB}]，year 必須等於後端的 epsYear（呼叫前先處理年度切換）
+async function applyAnchorsItems(items, epsYear) {
   await ensureStockIndex();
   const byId = new Map(stockIndex.map(s => [s.stock_id, s]));
   const list = getWatchlist();
   const have = new Set(list.map(s => s.stock_id));
   const payload = [];
+  const added = [];
   for (const it of items) {
+    if (it.year !== epsYear) continue;  // 舊年度的週報不寫（避免寫錯欄）
     const info = byId.get(it.stock_id);
     const name = info ? info.stock_name : it.stock_name;
-    const isNew = !have.has(it.stock_id);
-    if (isNew) {
+    if (!have.has(it.stock_id)) {
       list.push({ stock_id: it.stock_id, stock_name: name });
       activeGroup().ids.push(it.stock_id);
       have.add(it.stock_id);
+      added.push(it.stock_id);
+      pendSet('add', it.stock_id, true);
     }
     payload.push({
       stock_id: it.stock_id, stock_name: name, market: marketFor(it.stock_id),
-      eps2026: it.eps2026, eps2027: it.eps2027,
+      epsYear, epsA: it.epsA, epsB: it.epsB,
     });
   }
   setWatchlist(list);
   saveGroups();
-  const res = await Backend.bulkUpsert(payload);
+  const res = payload.length ? await Backend.bulkUpsert(payload) : { results: [] };
+  added.forEach(id => pendSet('add', id, false));
   return res;
 }
 
@@ -82,9 +97,11 @@ async function importWatchlist(raw) {
   activeGroup().ids.push(...newStocks.map(s => s.stock_id));
   saveGroups();
   if (newStocks.length) {
+    newStocks.forEach(s => pendSet('add', s.stock_id, true));
     Backend.bulkUpsert(newStocks.map(s => ({
       stock_id: s.stock_id, stock_name: s.stock_name, market: marketFor(s.stock_id),
-    }))).catch(e => console.warn('backend bulkUpsert failed', e));
+    }))).then(() => newStocks.forEach(s => pendSet('add', s.stock_id, false)))
+      .catch(e => { console.warn('backend bulkUpsert failed', e); toastWarn(e); });
   }
   return { added, total: codes.length, notFound };
 }

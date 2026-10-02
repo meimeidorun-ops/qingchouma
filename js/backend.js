@@ -3,13 +3,25 @@
 // This is also what 台股AI盯盤Agent polls to know what to monitor.
 
 const BACKEND_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzACbmPhOULGdJf2l60zeTGOKrPX9PtjAUvOf1xn8aAEQ1yV1FSyXhLt6yxkOprZTzt/exec';
-const BACKEND_DEFAULT_TOKEN = 'v6yu154h3dz9wiqcxl8omn0fsk2gprtb';
-
+// 寫入密碼（token）不再寫在程式裡（網頁與 GitHub repo 是公開的）：每台裝置在「設定」輸入一次，存在本機。
 function backendUrl() {
   return localStorage.getItem('backend_url') || BACKEND_DEFAULT_URL;
 }
 function backendToken() {
-  return localStorage.getItem('backend_token') || BACKEND_DEFAULT_TOKEN;
+  const t = localStorage.getItem('backend_token') || '';
+  if (!t) throw new Error('尚未設定後端寫入密碼（請到 ⚙ 設定填一次）');
+  return t;
+}
+// 寫入類 API 的回應要檢查 status（原本沒檢查：密碼錯也顯示「已儲存」）
+async function writeJson(res) {
+  const j = await res.json();
+  if (j.status === 401) throw new Error('後端寫入密碼不正確（請到 ⚙ 設定重新填）');
+  if (j.status !== 200) throw new Error(j.error || (j.result && j.result.error) || '後端寫入失敗');
+  if (Array.isArray(j.results)) {
+    const bad = j.results.find(r => r && r.ok === false);
+    if (bad) throw new Error(bad.error || '部分寫入失敗');
+  }
+  return j;
 }
 
 // 快速後端（Netlify Function，functions/api.js）：報價、K線、走勢、分點、收盤價先走這裡（通常 < 1 秒），
@@ -129,10 +141,10 @@ const Backend = {
       stock_name: stock.stock_name,
       market: stock.market || marketFor(stock.stock_id),
     };
-    if (eps.eps2026 !== undefined) body.eps2026 = eps.eps2026;
-    if (eps.eps2027 !== undefined) body.eps2027 = eps.eps2027;
+    // EPS：{epsYear, epsA, epsB}（第一年年份、第一年、第二年；null = 清空）。後端年度不符會拒絕。
+    if (eps.epsYear !== undefined) Object.assign(body, { epsYear: eps.epsYear, epsA: eps.epsA, epsB: eps.epsB });
     const res = await fetch(backendUrl(), { method: 'POST', body: JSON.stringify(body) });
-    return res.json();
+    return writeJson(res);
   },
 
   async bulkUpsert(items) {
@@ -140,7 +152,7 @@ const Backend = {
       method: 'POST',
       body: JSON.stringify({ action: 'bulkUpsert', token: backendToken(), items }),
     });
-    return res.json();
+    return writeJson(res);
   },
 
   async remove(stockId) {
@@ -148,7 +160,18 @@ const Backend = {
       method: 'POST',
       body: JSON.stringify({ action: 'remove', token: backendToken(), stock_id: stockId }),
     });
-    return res.json();
+    const j = await res.json();
+    if (j.status === 401) throw new Error('後端寫入密碼不正確（請到 ⚙ 設定重新填）');
+    return j;  // 404（後端本來就沒有）視為已刪除
+  },
+
+  // 定錨改用下一組年度時切換：E 欄（第二年）搬到 D 欄、E 欄清空、年份 +1（後端會先備份工作表）
+  async epsRollover(toYear) {
+    const res = await fetch(backendUrl(), {
+      method: 'POST',
+      body: JSON.stringify({ action: 'epsRollover', token: backendToken(), toYear }),
+    });
+    return writeJson(res);
   },
 
   // Real-time-ish quotes proxied through the Apps Script backend (TWSE/TPEx
@@ -234,7 +257,7 @@ const Backend = {
   async setGroups(groups) {
     const data = encodeURIComponent(JSON.stringify({ groups }));
     const res = await fetch(`${backendUrl()}?action=setGroups&token=${encodeURIComponent(backendToken())}&data=${data}`);
-    return res.json();
+    return writeJson(res);
   },
 
   // Weekly 集保股權分散表 (TDCC) via Apps Script. Returns [{d:'YYYYMMDD', pct:[15], ppl:[15]}] ascending.
@@ -254,6 +277,7 @@ const Backend = {
         const n = Object.keys(c).length;
         if (n && n >= Math.ceil(stocks.length * 0.7)) {
           Backend.quoteDiag = { cnyes: '鉅亨', gas: '—', fast: '—', at: Date.now() };
+          noteMarketClosed(c);
           return c;
         }
         Backend.quoteDiag = { cnyes: `只拿到 ${n}/${stocks.length}` };
@@ -342,7 +366,19 @@ function swr(key, ttlMs, raceMs, fetcher) {
 function twMarketOpen() {
   const n = new Date(Date.now() + 8 * 3600e3);
   const d = n.getUTCDay(), m = n.getUTCHours() * 60 + n.getUTCMinutes();
-  return d >= 1 && d <= 5 && m >= 540 && m <= 815;
+  if (!(d >= 1 && d <= 5 && m >= 540 && m <= 815)) return false;
+  // 國定假日（例：10/10）：當天 09:15 後報價全都不是今天 → 記下「今天休市」，不再當盤中
+  try { if (localStorage.getItem('tw_closed_day') === n.toISOString().slice(0, 10).replace(/-/g, '')) return false; } catch (e) {}
+  return true;
+}
+// 由報價判斷今天是否休市（在 Backend.quote 拿到資料後呼叫）
+function noteMarketClosed(quotes) {
+  const n = new Date(Date.now() + 8 * 3600e3);
+  const today = n.toISOString().slice(0, 10).replace(/-/g, '');
+  const m = n.getUTCHours() * 60 + n.getUTCMinutes();
+  const vals = Object.values(quotes || {}).filter(q => q && q.date);
+  if (!twMarketOpen() || m < 555 || vals.length < 3) return;
+  if (!vals.some(q => q.date === today)) { try { localStorage.setItem('tw_closed_day', today); } catch (e) {} }
 }
 // 快取是在「今天開盤前 / 收盤前」存的，而現在已經過了那個時間點 → 視為過期（避免收盤後還看到盤中價）。
 function twCrossedSession(savedAt) {

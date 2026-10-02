@@ -82,6 +82,8 @@ async function loadProfit() {
   loadEpsEstimate();
 }
 
+let epsYearShown = 2026;  // 個股頁 EPS 欄位目前顯示的第一年（儲存時帶給後端核對）
+
 function peColorClass(pe) {
   if (pe == null || !isFinite(pe) || pe <= 0) return null;
   if (pe < 15) return 'pe-green';
@@ -106,12 +108,19 @@ async function loadEpsEstimate() {
       price = rows.length ? rows[rows.length - 1].close : null;
     }
 
-    $('#eps-2026-input').value = entry && entry.eps2026 != null ? entry.eps2026 : '';
-    $('#eps-2027-input').value = entry && entry.eps2027 != null ? entry.eps2027 : '';
+    // 年份跟著後端（定錨換年度後 epsYear 會 +1）；舊後端沒有 epsYear 就當 2026
+    const Y = Number((entry && entry.epsYear) || (backendList[0] && backendList[0].epsYear)) || 2026;
+    epsYearShown = Y;
+    const a = entry ? (entry.epsA !== undefined ? entry.epsA : entry.eps2026) : null;
+    const b = entry ? (entry.epsB !== undefined ? entry.epsB : entry.eps2027) : null;
+    $('#eps-y1-label').textContent = Y;
+    $('#eps-y2-label').textContent = Y + 1;
+    $('#eps-2026-input').value = a != null ? a : '';
+    $('#eps-2027-input').value = b != null ? b : '';
 
     const chips = [];
     if (price && entry) {
-      for (const [year, eps] of [['2026', entry.eps2026], ['2027', entry.eps2027]]) {
+      for (const [year, eps] of [[String(Y), a], [String(Y + 1), b]]) {
         if (eps == null || eps <= 0) continue;
         const pe = price / eps;
         const cls = peColorClass(pe);

@@ -185,11 +185,11 @@
         <div class="section-label">預估EPS（自行輸入）</div>
         <div class="eps-edit-row">
           <div class="eps-field">
-            <label>2026</label>
+            <label id="eps-y1-label">2026</label>
             <input type="number" step="0.01" id="eps-2026-input" placeholder="—">
           </div>
           <div class="eps-field">
-            <label>2027</label>
+            <label id="eps-y2-label">2027</label>
             <input type="number" step="0.01" id="eps-2027-input" placeholder="—">
           </div>
           <button class="save" id="btn-save-eps">儲存</button>
@@ -284,6 +284,11 @@
       <p class="hint">
         免登入每小時可查 300 次，註冊並填入 Token 後可提升到每小時 600 次。
         前往 finmindtrade.com 免費註冊取得 Token。資料每日更新，盤中價格可能延遲。
+      </p>
+      <label for="backend-token-input" style="margin-top:8px;">後端寫入密碼（必填一次）</label>
+      <input type="password" id="backend-token-input" placeholder="貼上寫入密碼" autocomplete="off">
+      <p class="hint" id="backend-token-hint">
+        新增/刪除自選股、改 EPS、看「操作計畫」都需要。每台手機或電腦填一次，只存在這台裝置。
       </p>
       <button class="save" id="btn-save-token">儲存</button>
 

@@ -281,6 +281,12 @@ html, body {
 .branch-table .bar.down { background: #1fa363; }
 .branch-table .barcell span { position: relative; }
 .branch-note { padding: 12px 12px 40px; font-size: 11px; color: var(--text-dim); }
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px);
+  max-width: 90vw; padding: 10px 14px; border-radius: 10px; background: #3a1f1f; color: #fecaca; font-size: 13px;
+  border: 1px solid rgba(230,65,60,0.5); z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 .br-link { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 .brh-sum { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
 .brh-sum b { font-size: 15px; }

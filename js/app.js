@@ -74,7 +74,7 @@ function saveGroups(push = true) {
   localStorage.setItem('active_group', activeGroupId);
   if (push) {
     clearTimeout(pushGroupsTimer);
-    pushGroupsTimer = setTimeout(() => Backend.setGroups(groups).catch(e => console.warn('groups sync failed', e)), 800);
+    pushGroupsTimer = setTimeout(() => Backend.setGroups(groups).catch(e => { console.warn('groups sync failed', e); toastWarn(e); }), 800);
   }
 }
 
@@ -100,7 +100,10 @@ function addToGroup(stock, groupId) {
   if (!list.some(s => s.stock_id === stock.stock_id)) {
     list.push({ stock_id: stock.stock_id, stock_name: stock.stock_name });
     setWatchlist(list);
-    Backend.upsert(stock).catch(e => console.warn('backend upsert failed', e));
+    pendSet('remove', stock.stock_id, false);
+    pendSet('add', stock.stock_id, true);
+    Backend.upsert(stock).then(() => pendSet('add', stock.stock_id, false))
+      .catch(e => { console.warn('backend upsert failed', e); toastWarn(e); });
   }
   const g = groups.find(x => x.id === groupId);
   if (g && !g.ids.includes(stock.stock_id)) g.ids.push(stock.stock_id);
@@ -112,7 +115,10 @@ function removeFromGroup(stockId, groupId) {
   if (g) g.ids = g.ids.filter(id => id !== stockId);
   if (!groups.some(x => x.ids.includes(stockId))) {
     setWatchlist(getWatchlist().filter(s => s.stock_id !== stockId));
-    Backend.remove(stockId).catch(e => console.warn('backend remove failed', e));
+    pendSet('add', stockId, false);
+    pendSet('remove', stockId, true);
+    Backend.remove(stockId).then(() => pendSet('remove', stockId, false))
+      .catch(e => { console.warn('backend remove failed', e); toastWarn(e); });
   }
   saveGroups();
 }
@@ -207,30 +213,57 @@ function renderGroupTabs() {
   }));
 }
 
-// Merge the shared backend watchlist into this browser's local copy so a fresh
-// browser/device/URL starts with the same list. Local-only entries (e.g. a sync
-// that failed earlier) are pushed up so nothing is lost.
+// 畫面下方短暫提示（寫入失敗、沒設密碼…），4 秒後消失
+function toastWarn(e) {
+  let t = $('#toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
+  t.textContent = '⚠ ' + ((e && e.message) || e);
+  t.classList.add('show');
+  clearTimeout(toastWarn.timer);
+  toastWarn.timer = setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ---- 還沒成功送到後端的新增/刪除（離線或後端出錯時暫存，下次同步重送）----
+// 2026-10-03：原本同步會把「本機有、後端沒有」的股票一律推回後端，結果在 A 裝置刪掉的股票會被 B 裝置加回來。
+// 改成「後端為準」：只有這台自己新增、還沒送成功的（pending add）才會推上去；這台刪除還沒送成功的（pending remove）會重送刪除。
+function pendRead(kind) {
+  try { return new Set(JSON.parse(localStorage.getItem('wl_pending_' + kind) || '[]')); } catch (e) { return new Set(); }
+}
+function pendSet(kind, id, on) {
+  const s = pendRead(kind);
+  if (on) s.add(id); else s.delete(id);
+  try { localStorage.setItem('wl_pending_' + kind, JSON.stringify([...s])); } catch (e) {}
+}
+
+// 後端清單為準同步到本機（新裝置/新網址也會拿到同一份）。
 async function syncWatchlistFromBackend() {
   // 股票名稱清單（FinMind）和後端清單（Apps Script，2～14 秒）同時抓
   const [, remote] = await Promise.all([ensureStockIndex(), Backend.list()]);
   const local = getWatchlist();
   const remoteIds = new Set(remote.map(s => s.stock_id));
   const localIds = new Set(local.map(s => s.stock_id));
+  const pAdd = pendRead('add'), pRem = pendRead('remove');
 
   const merged = [
-    ...local,
-    ...remote.filter(s => !localIds.has(s.stock_id)).map(s => ({ stock_id: s.stock_id, stock_name: s.stock_name })),
+    ...local.filter(s => remoteIds.has(s.stock_id) || pAdd.has(s.stock_id)),
+    ...remote.filter(s => !localIds.has(s.stock_id) && !pRem.has(s.stock_id))
+      .map(s => ({ stock_id: s.stock_id, stock_name: s.stock_name })),
   ];
-  const localOnly = local.filter(s => !remoteIds.has(s.stock_id));
-  if (localOnly.length) {
-    Backend.bulkUpsert(localOnly.map(s => ({ stock_id: s.stock_id, stock_name: s.stock_name, market: marketFor(s.stock_id) })))
+  // 重送還沒成功的新增 / 刪除
+  const toAdd = local.filter(s => pAdd.has(s.stock_id) && !remoteIds.has(s.stock_id));
+  if (toAdd.length) {
+    Backend.bulkUpsert(toAdd.map(s => ({ stock_id: s.stock_id, stock_name: s.stock_name, market: marketFor(s.stock_id) })))
+      .then(() => toAdd.forEach(s => pendSet('add', s.stock_id, false)))
       .catch(e => console.warn('backend bulkUpsert failed', e));
   }
-  if (merged.length !== local.length) {
-    setWatchlist(merged);
-    return true;
-  }
-  return false;
+  pAdd.forEach(id => { if (remoteIds.has(id)) pendSet('add', id, false); });
+  pRem.forEach(id => {
+    if (!remoteIds.has(id)) { pendSet('remove', id, false); return; }
+    Backend.remove(id).then(() => pendSet('remove', id, false)).catch(e => console.warn('backend remove failed', e));
+  });
+  const changed = merged.map(s => s.stock_id).join() !== local.map(s => s.stock_id).join();
+  if (changed) setWatchlist(merged);
+  return changed;
 }
 
 // ---- Navigation ----
@@ -587,9 +620,12 @@ function klineContainerHeight() {
   return 260 + extraPanes * 90;
 }
 
-function redrawKline() {
+function redrawKline(keepRange = false) {
   const container = $('#chart-kline');
   if (!klineData.price.length) return;
+  // 自動更新時保留使用者目前縮放／捲動的範圍（不然每分鐘都跳回預設）
+  let range = null;
+  if (keepRange && charts.kline) { try { range = charts.kline.timeScale().getVisibleLogicalRange(); } catch (e) {} }
   container.style.height = `${klineContainerHeight()}px`;
   charts.kline = renderKLine(container, klineData.price, {
     instRows: klineData.inst,
@@ -601,6 +637,7 @@ function redrawKline() {
     intraday: klineInterval !== '1d',
     visibleBars: { '60m': 100, '5m': 160 }[klineInterval],
   });
+  if (range && charts.kline) { try { charts.kline.timeScale().setVisibleLogicalRange(range); } catch (e) {} }
 }
 
 async function loadKline(silent = false) {
@@ -620,7 +657,7 @@ async function loadKline(silent = false) {
     const drawRows = chartRows || priceRows;
     if (!drawRows.length) { container.innerHTML = '<div class="error-msg">查無分K資料</div>'; return; }
     klineData = { price: drawRows, inst: instRows, holding: [] };
-    redrawKline();
+    redrawKline(silent);
 
     const last = priceRows[priceRows.length - 1];
     const prev = priceRows.length > 1 ? priceRows[priceRows.length - 2] : last;
@@ -811,13 +848,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('#btn-save-eps').addEventListener('click', async () => {
     if (!currentStock) return;
-    const eps2026 = $('#eps-2026-input').value;
-    const eps2027 = $('#eps-2027-input').value;
+    const a = $('#eps-2026-input').value.trim();
+    const b = $('#eps-2027-input').value.trim();
     $('#eps-status').textContent = '儲存中…';
     try {
+      // 空白 = 清除（原本空白會被後端略過、舊數字留著卻顯示「已儲存」）
       await Backend.upsert(currentStock, {
-        eps2026: eps2026 === '' ? null : Number(eps2026),
-        eps2027: eps2027 === '' ? null : Number(eps2027),
+        epsYear: epsYearShown,
+        epsA: a === '' ? null : Number(a),
+        epsB: b === '' ? null : Number(b),
       });
       $('#eps-status').textContent = '已儲存';
       loadEpsEstimate();
@@ -828,6 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('#btn-settings').addEventListener('click', () => {
     $('#token-input').value = localStorage.getItem('finmind_token') || '';
+    $('#backend-token-input').value = localStorage.getItem('backend_token') || '';
     $('#settings-panel').classList.add('active');
   });
   $('#btn-settings-close').addEventListener('click', () => {
@@ -835,6 +875,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#btn-save-token').addEventListener('click', () => {
     localStorage.setItem('finmind_token', $('#token-input').value.trim());
+    const bt = $('#backend-token-input').value.trim();
+    if (bt) localStorage.setItem('backend_token', bt); else localStorage.removeItem('backend_token');
     $('#settings-panel').classList.remove('active');
   });
 
@@ -843,15 +885,31 @@ document.addEventListener('DOMContentLoaded', () => {
     anchorsPending = items;
     $('#anchors-status').textContent = '';
     if (!items.length) {
-      $('#anchors-preview').textContent = '沒有找到「名稱(代號)…2026/2027年EPS約A/B元」格式的標的，請確認貼的是完整週報內容。';
+      $('#anchors-preview').textContent = '沒有找到「名稱(代號)…YYYY/YYYY年EPS約A/B元」格式的標的，請確認貼的是完整週報內容。';
       $('#btn-anchors-apply').style.display = 'none';
       return;
     }
     await ensureStockIndex();
     const have = new Set(getWatchlist().map(s => s.stock_id));
-    $('#anchors-preview').innerHTML = items.map(i =>
-      `${have.has(i.stock_id) ? '更新' : '<b>新增</b>'}　${i.stock_name}（${i.stock_id}）　EPS ${i.eps2026} / ${i.eps2027}`
-    ).join('<br>');
+    let Y = 2026;
+    try { Y = await backendEpsYear(); } catch (e) {}
+    anchorsYear = Y;
+    const newest = Math.max(...items.map(i => i.year));
+    const rows = items.map(i => {
+      const tag = i.year < Y ? '<span class="down">略過（舊年度）</span>' : have.has(i.stock_id) ? '更新' : '<b>新增</b>';
+      return `${tag}　${i.stock_name}（${i.stock_id}）　${i.year}/${i.year + 1} EPS ${i.epsA} / ${i.epsB}`;
+    });
+    let head = '';
+    if (newest > Y) {
+      // 定錨已改用下一組年度 → 先問要不要切換（E 欄搬到 D 欄、年份 +1；後端會先備份工作表）
+      head = `<b class="up">定錨週報已改用 ${newest}/${newest + 1} 年，App 目前是 ${Y}/${Y + 1} 年。</b><br>` +
+        `按「切換年度並匯入」會：${Y + 1} 年 EPS 搬到第一欄、第二欄改放 ${Y + 2} 年（試算表會先自動備份）。<br><br>`;
+      $('#btn-anchors-apply').textContent = `切換到 ${Y + 1}/${Y + 2} 年並匯入`;
+    } else {
+      $('#btn-anchors-apply').textContent = '確認匯入';
+    }
+    anchorsRollTo = newest > Y ? Y + 1 : null;
+    $('#anchors-preview').innerHTML = head + rows.join('<br>');
     $('#btn-anchors-apply').style.display = '';
   });
 
@@ -859,9 +917,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!anchorsPending.length) return;
     $('#anchors-status').textContent = '寫入中…';
     try {
-      const res = await applyAnchorsItems(anchorsPending);
+      let Y = anchorsYear;
+      if (anchorsRollTo) {
+        if (!confirm(`確定把 EPS 年度從 ${Y}/${Y + 1} 切換到 ${anchorsRollTo}/${anchorsRollTo + 1}？\n（試算表會先備份；一年只需做一次）`)) { $('#anchors-status').textContent = ''; return; }
+        const r = await Backend.epsRollover(anchorsRollTo);
+        Y = r.result.epsYear;
+        BK.drop('list');
+      }
+      const res = await applyAnchorsItems(anchorsPending, Y);
       const ok = (res.results || []).filter(r => r.ok).length;
-      $('#anchors-status').textContent = `已處理 ${ok} 檔（新增或更新 EPS）`;
+      $('#anchors-status').textContent = `已處理 ${ok} 檔（新增或更新 ${Y}/${Y + 1} EPS）`;
       $('#anchors-input').value = '';
       $('#anchors-preview').textContent = '';
       $('#btn-anchors-apply').style.display = 'none';

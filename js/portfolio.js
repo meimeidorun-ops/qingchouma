@@ -24,7 +24,7 @@ const Portfolio = {
   async load() {
     const res = await fetch(`${backendUrl()}?action=portfolio&token=${encodeURIComponent(backendToken())}`);
     const json = await res.json();
-    if (json.status === 401) throw new Error('token 不正確');
+    if (json.status === 401) throw new Error('後端寫入密碼不正確或沒填（請到首頁 ⚙ 設定填一次）');
     if (json.status !== 200) throw new Error(json.error || '後端還沒有操作計畫功能（請先更新 Apps Script）');
     this.lots = json.data.lots || [];
     this.settings = json.data.settings;

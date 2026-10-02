@@ -6,7 +6,17 @@
 const UP_COLOR = '#e6413c';   // Taiwan convention: red = up / buy
 const DOWN_COLOR = '#1fa363'; // green = down / sell
 
+// 同一個容器再畫新圖前，先把舊圖和它的 ResizeObserver 清掉。
+// （2026-10-03 前從沒清過：每次重畫都多一張圖 + 一個監聽器，K 線每分鐘自動更新後會越用越慢。）
+function disposeChart(container) {
+  if (container._qcRo) container._qcRo.disconnect();
+  if (container._qcChart) { try { container._qcChart.remove(); } catch (e) {} }
+  container._qcRo = null;
+  container._qcChart = null;
+}
+
 function makeChart(container, opts = {}) {
+  disposeChart(container);
   const chart = LightweightCharts.createChart(container, {
     layout: {
       background: { color: 'transparent' },
@@ -32,6 +42,8 @@ function makeChart(container, opts = {}) {
     if (chart._barCount) showAllBars(chart, chart._barCount);
   });
   ro.observe(container);
+  container._qcChart = chart;
+  container._qcRo = ro;
 
   return chart;
 }
