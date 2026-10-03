@@ -165,7 +165,27 @@ html, body {
 .nav-btn:disabled { opacity: 0.3; }
 
 .group-bar { display: flex; align-items: center; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.wl-updated { font-size: 11px; color: var(--text-dim); text-align: right; padding: 4px 14px 0; flex-shrink: 0; min-height: 15px; }
+.wl-bar { display: flex; align-items: center; gap: 8px; padding: 4px 14px 0; flex-shrink: 0; }
+.wl-sort { flex-shrink: 0; font-size: 11px; color: var(--accent); background: none; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+.wl-updated { flex: 1; font-size: 11px; color: var(--text-dim); text-align: right; min-height: 15px; }
+/* 評分徽章與訊號 */
+.sc-badge { display: none; margin-left: 6px; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 6px; vertical-align: 1px; cursor: pointer; }
+.sc-badge.has { display: inline-block; }
+.sc-hi { background: rgba(31,163,99,0.2); color: #4ade80; }
+.sc-mid { background: rgba(242,199,68,0.2); color: #f2c744; }
+.sc-lo { background: rgba(139,148,158,0.18); color: var(--text-dim); }
+.sc-sig { margin-left: 6px; font-size: 11px; }
+.sc-sig.good { color: #f87171; }
+.sc-sig.warn { color: #4ade80; }
+.sd-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; }
+.sd-label { width: 36px; color: var(--text-dim); }
+.sd-bar { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.sd-bar span { display: block; height: 100%; background: var(--accent); }
+.sd-val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.sd-note { font-size: 12px; color: var(--text-dim); margin: 3px 0 0 44px; }
+.sd-sigs { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.sd-sig.good { color: #f87171; }
+.sd-sig.warn { color: #4ade80; }
 .group-tabs { flex: 1; display: flex; overflow-x: auto; scrollbar-width: none; }
 .group-tabs::-webkit-scrollbar { display: none; }
 .group-tab {

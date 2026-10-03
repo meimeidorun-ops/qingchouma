@@ -227,6 +227,13 @@ const Backend = {
     return json.data;
   },
 
+  // 自選股評分＋訊號（Apps Script 算好、快取 30 分鐘）。Returns {asOf, instDates, items:[{id,name,score,parts,pe,yoy,signals,...}]}
+  async scores() {
+    const json = await gasGet('action=scores');
+    if (json.status !== 200) throw new Error(json.error || 'backend error');
+    return json.data;
+  },
+
   // 單一分點近期買超／賣超哪些股票（period 1=近1日、5=近5日）。Returns {date, buy:[{id,name,buy,sell,net}], sell:[...]}
   async branchTop(b, bhid, period = 1) {
     const json = await gasGet(`action=branchTop&b=${encodeURIComponent(b)}&bhid=${encodeURIComponent(bhid || b)}&period=${period}`);
@@ -421,6 +428,7 @@ function twCrossedSession(savedAt) {
   Backend.kbar = (stock, iv) => swr(`k_${stock.stock_id}_${iv}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.kbar(stock, iv));
   Backend.intraday = stock => swr(`i_${stock.stock_id}`, twMarketOpen() ? 15e3 : 30 * 60e3, 1500, () => raw.intraday(stock));
   Backend.branch = (id, p) => swr(`b2_${id}_${p}`, 30 * 60e3, 2000, () => raw.branch(id, p));  // b2_：舊快取的分點代號是錯的
+  Backend.scores = () => swr('scores', 30 * 60e3, 1500, () => raw.scores());
   Backend.branchTop = (b, bhid, p) => swr(`bt_${b}_${p}`, 30 * 60e3, 3000, () => raw.branchTop(b, bhid, p));
   // 舊版大戶快取（holders_*）已不用，清掉避免佔手機空間
   try { Object.keys(localStorage).filter(k => k.startsWith('holders_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}

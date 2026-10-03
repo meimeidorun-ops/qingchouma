@@ -417,8 +417,8 @@ async function renderWatchlist() {
   box.innerHTML = list.map(s => `
     <div class="wl-item" data-id="${s.stock_id}" data-name="${s.stock_name}">
       <div class="wl-left">
-        <div class="wl-name">${s.stock_name}</div>
-        <div class="wl-code">${s.stock_id}</div>
+        <div class="wl-name">${s.stock_name}<span class="sc-badge" id="wl-sc-${s.stock_id}"></span></div>
+        <div class="wl-code">${s.stock_id}<span class="sc-sig" id="wl-sig-${s.stock_id}"></span></div>
       </div>
       <div class="wl-right" id="wl-quote-${s.stock_id}">
         <div class="wl-price">—</div>
@@ -427,16 +427,95 @@ async function renderWatchlist() {
     </div>
   `).join('');
   box.querySelectorAll('.wl-item').forEach(el => {
-    el.addEventListener('click', () => {
-      navStocks = list;
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('.sc-badge.has')) { ev.stopPropagation(); openScoreDetail(el.dataset.id); return; }
+      // 上一檔/下一檔跟著畫面上的順序（評分排序時也一樣）
+      const byIdNow = new Map(list.map(s => [s.stock_id, s]));
+      navStocks = [...box.querySelectorAll('.wl-item')].map(x => byIdNow.get(x.dataset.id)).filter(Boolean);
       openStock({ stock_id: el.dataset.id, stock_name: el.dataset.name });
     });
   });
+  wlRendered = list;
+  paintScores(list);
 
   // 先用手機裡上次的報價立刻顯示，再去抓最新的覆蓋（後端約需數秒）。
   const cached = Backend.quotePeek(list);
   if (cached) paintWatchlistQuotes(list, cached, true);
   await refreshWatchlistQuotes(list);
+}
+
+// ---- 自選股評分（Apps Script action=scores）----
+// 分數徽章：≥70 綠、50～69 黃、<50 灰；名稱下方顯示最重要的一個訊號；可切換「依評分排序」。點分數看細項。
+let scoreMap = new Map();
+let wlRendered = [];  // 目前清單分頁的股票（原始順序）
+let wlSortMode = localStorage.getItem('wl_sort') || 'custom';
+const SIG_SHORT = { instUp: '法人連買', trustUp: '投信連買', instDn: '法人連賣', maUp: '站上月線', maDn: '跌破月線', pe15: '進便宜區', rev: '營收大增', bigUp: '大漲', bigDn: '大跌' };
+function sigShort(sig) {
+  const base = sig.key.replace(/\d+$/, '');
+  const n = (sig.key.match(/(\d+)$/) || [])[1];
+  if (base === 'rev') return '營收大增';
+  return (SIG_SHORT[base] || sig.text) + (n && /Up|Dn/.test(base) ? n + '日' : '');
+}
+function scoreClass(s) { return s == null ? 'sc-na' : s >= 70 ? 'sc-hi' : s >= 50 ? 'sc-mid' : 'sc-lo'; }
+
+async function paintScores(list) {
+  const apply = data => {
+    scoreMap = new Map((data && data.items || []).map(it => [it.id, it]));
+    for (const s of list) {
+      const it = scoreMap.get(s.stock_id);
+      const b = $(`#wl-sc-${s.stock_id}`), g = $(`#wl-sig-${s.stock_id}`);
+      if (b) {
+        b.textContent = it && it.score != null ? it.score : '';
+        b.className = `sc-badge ${it && it.score != null ? 'has ' + scoreClass(it.score) : ''}`;
+      }
+      if (g) {
+        const sig = it && it.signals && (it.signals.find(x => x.level === 'warn') || it.signals[0]);
+        g.textContent = sig ? sigShort(sig) : '';
+        g.className = `sc-sig ${sig ? sig.level : ''}`;
+      }
+    }
+    applyWatchlistSort(list);
+  };
+  try { apply(await Backend.scores()); } catch (e) { console.warn('scores failed', e); }
+}
+
+function applyWatchlistSort(list) {
+  const box = $('#watchlist');
+  const btn = $('#wl-sort');
+  if (btn) btn.textContent = wlSortMode === 'score' ? '排序：評分 ↓' : '排序：自訂';
+  const items = [...box.querySelectorAll('.wl-item')];
+  if (!items.length) return;
+  const order = new Map(list.map((s, i) => [s.stock_id, i]));
+  const key = el => {
+    if (wlSortMode !== 'score') return order.get(el.dataset.id);
+    const it = scoreMap.get(el.dataset.id);
+    return it && it.score != null ? -it.score : 1;  // 沒分數的排最後
+  };
+  items.sort((a, b) => key(a) - key(b) || order.get(a.dataset.id) - order.get(b.dataset.id)).forEach(el => box.appendChild(el));
+}
+
+function openScoreDetail(id) {
+  const it = scoreMap.get(id);
+  if (!it) return;
+  const P = it.parts || {};
+  const row = (label, v, note) => `
+    <div class="sd-row"><span class="sd-label">${label}</span>
+      <span class="sd-bar"><span style="width:${v == null ? 0 : v / 25 * 100}%"></span></span>
+      <span class="sd-val">${v == null ? '—' : v + '/25'}</span></div>
+    <div class="sd-note">${note}</div>`;
+  const inst = it.instDays ? `近 ${it.instDays} 日外資＋投信買超 ${it.instBuyDays} 天（共 ${it.instNet > 0 ? '+' : ''}${numFmt(it.instNet)} 張），投信買超 ${it.trustDays} 天` : '沒有法人資料';
+  const rev = it.yoy != null ? `最新月營收 YoY ${it.yoy > 0 ? '+' : ''}${it.yoy}%（${Number(String(it.revYm).slice(0, 3)) + 1911}/${String(it.revYm).slice(3)}）` : '沒有營收資料';
+  const val = it.pe != null ? `${it.peYear} 預估本益比 ${it.pe} 倍（定錨 EPS）` : '沒有預估 EPS';
+  const trend = it.ma20 != null ? `收盤 ${numFmt(it.close, 2)}，月線 ${numFmt(it.ma20, 2)}（${it.close > it.ma20 ? '在月線上' : '在月線下'}）` : '價格資料不足';
+  showModal(`
+    <div class="modal-title">${it.name}（${id}）評分 <span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span></div>
+    ${row('估值', P.val, val)}${row('法人', P.inst, inst)}${row('營收', P.rev, rev)}${row('趨勢', P.trend, trend)}
+    <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
+    <div class="dim" style="margin-top:8px">規則計算，僅供參考。每項 25 分；缺資料的項目不計，少於 3 項不給總分。</div>
+    <button class="modal-btn" id="sd-open" style="text-align:center;margin-top:12px">打開個股頁 ›</button>
+    <button class="modal-btn" id="sd-close" style="text-align:center">關閉</button>`);
+  $('#sd-close').addEventListener('click', closeModal);
+  $('#sd-open').addEventListener('click', () => { closeModal(); openStock({ stock_id: id, stock_name: it.name }); });
 }
 
 // 首頁報價更新：盤中每 20 秒一次、從背景切回 App 時立刻一次（只更新數字，不重畫清單）。
@@ -733,6 +812,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('#btn-group-menu').addEventListener('click', openGroupMenu);
+  $('#wl-sort').addEventListener('click', () => {
+    wlSortMode = wlSortMode === 'score' ? 'custom' : 'score';
+    try { localStorage.setItem('wl_sort', wlSortMode); } catch (e) {}
+    applyWatchlistSort(wlRendered);
+  });
   $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
 
   $('#search-input').addEventListener('input', (e) => {
