@@ -466,8 +466,9 @@ async function renderWatchlist() {
 // 分數徽章：≥70 綠、50～69 黃、<50 灰；名稱下方顯示最重要的一個訊號；可切換「依評分排序」。點分數看細項。
 let scoreMap = new Map();
 let wlRendered = [];  // 目前清單分頁的股票（原始順序）
-let wlSortMode = localStorage.getItem('wl_sort') || 'custom';
-const SIG_SHORT = { instUp: '法人連買', trustUp: '投信連買', instDn: '法人連賣', maUp: '站上月線', maDn: '跌破月線', pe15: '進便宜區', rev: '營收大增', bigUp: '大漲', bigDn: '大跌' };
+// 預設依分數高→低（2026-10-03 改；鍵名換 wl_sort2，讓之前存成「自訂」的裝置也切到分數）
+let wlSortMode = localStorage.getItem('wl_sort2') || 'score';
+const SIG_SHORT = { instUp: '法人連買', trustUp: '投信連買', instDn: '法人連賣', maUp: '站上月線', maDn: '跌破月線', pe15: '進便宜區', rev: '營收大增', bigUp: '大漲', bigDn: '大跌', mgUp: '融資大增', mgDn: '融資大減' };
 function sigShort(sig) {
   const base = sig.key.replace(/\d+$/, '');
   const n = (sig.key.match(/(\d+)$/) || [])[1];
@@ -500,7 +501,7 @@ async function paintScores(list) {
 function applyWatchlistSort(list) {
   const box = $('#watchlist');
   const btn = $('#wl-sort');
-  if (btn) btn.textContent = wlSortMode === 'score' ? '排序：評分 ↓' : '排序：自訂';
+  if (btn) btn.textContent = wlSortMode === 'score' ? '排序：分數 高→低' : '排序：自訂';
   const items = [...box.querySelectorAll('.wl-item')];
   if (!items.length) return;
   const order = new Map(list.map((s, i) => [s.stock_id, i]));
@@ -524,12 +525,13 @@ function openScoreDetail(id) {
   const inst = it.instDays ? `近 ${it.instDays} 日外資＋投信買超 ${it.instBuyDays} 天（共 ${it.instNet > 0 ? '+' : ''}${numFmt(it.instNet)} 張），投信買超 ${it.trustDays} 天` : '沒有法人資料';
   const rev = it.yoy != null ? `最新月營收 YoY ${it.yoy > 0 ? '+' : ''}${it.yoy}%（${Number(String(it.revYm).slice(0, 3)) + 1911}/${String(it.revYm).slice(3)}）` : '沒有營收資料';
   const val = it.pe != null ? `${it.peYear} 預估本益比 ${it.pe} 倍（定錨 EPS）` : '沒有預估 EPS';
+  const mg = it.mgPct != null ? `融資餘額 ${numFmt(it.mgBal)} 張，5 日 ${it.mgChg > 0 ? '+' : ''}${numFmt(it.mgChg)} 張（${it.mgPct > 0 ? '+' : ''}${it.mgPct}%）；減少＝籌碼沉澱加分，大增＝散戶追價扣分` : '沒有融資資料（或餘額太小）';
   const trend = it.ma20 != null ? `收盤 ${numFmt(it.close, 2)}，月線 ${numFmt(it.ma20, 2)}（${it.close > it.ma20 ? '在月線上' : '在月線下'}）` : '價格資料不足';
   showModal(`
     <div class="modal-title">${it.name}（${id}）評分 <span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span></div>
-    ${row('估值', P.val, val)}${row('法人', P.inst, inst)}${row('營收', P.rev, rev)}${row('趨勢', P.trend, trend)}
+    ${row('估值', P.val, val)}${row('法人', P.inst, inst)}${row('融資', P.margin, mg)}${row('營收', P.rev, rev)}${row('趨勢', P.trend, trend)}
     <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
-    <div class="dim" style="margin-top:8px">規則計算，僅供參考。每項 25 分；缺資料的項目不計，少於 3 項不給總分。</div>
+    <div class="dim" style="margin-top:8px">規則計算，僅供參考。5 項各 25 分，換算成 100 分；缺資料的項目不計，少於 3 項不給總分。</div>
     <button class="modal-btn" id="sd-open" style="text-align:center;margin-top:12px">打開個股頁 ›</button>
     <button class="modal-btn" id="sd-close" style="text-align:center">關閉</button>`);
   $('#sd-close').addEventListener('click', closeModal);
@@ -832,7 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btn-group-menu').addEventListener('click', openGroupMenu);
   $('#wl-sort').addEventListener('click', () => {
     wlSortMode = wlSortMode === 'score' ? 'custom' : 'score';
-    try { localStorage.setItem('wl_sort', wlSortMode); } catch (e) {}
+    try { localStorage.setItem('wl_sort2', wlSortMode); } catch (e) {}
     applyWatchlistSort(wlRendered);
   });
   $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
