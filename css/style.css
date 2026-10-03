@@ -287,6 +287,8 @@ html, body {
   border: 1px solid rgba(230,65,60,0.5); z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+.dim { color: var(--text-dim); font-size: 11px; }
+.brt-row { cursor: pointer; }
 .br-link { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 .brh-sum { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
 .brh-sum b { font-size: 15px; }

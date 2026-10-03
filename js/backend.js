@@ -210,16 +210,27 @@ const Backend = {
 
   // 分點進出（主力進出前 15 名）。period: 1=近1日 2=近5日 3=近10日 4=近20日。
   async branch(stockId, period = 1) {
-    const json = await proxyGet(`action=branch&id=${encodeURIComponent(stockId)}&period=${period}`);
+    const qs = `action=branch&id=${encodeURIComponent(stockId)}&period=${period}`;
+    let json = await proxyGet(qs);
+    // 快速後端（Netlify，額度用完暫時無法更新）回的是舊格式：bid 其實是總公司代號、沒有 bhid → 改問 Apps Script（21 版起已修正）
+    const first = json.status === 200 && json.data && ((json.data.buy || [])[0] || (json.data.sell || [])[0]);
+    if (first && first.bhid === undefined) json = await gasGet(qs);
     if (json.status !== 200) throw new Error(json.error || 'backend error');
     if (json.data && json.data.error) throw new Error(json.data.error);
     return json.data;
   },
 
-  // 單一分點在這檔股票的近期每日進出（只有快速後端有）。Returns {rows:[{date,buy,sell,net}], total}
-  async branchHist(stockId, bid) {
-    const json = await proxyGet(`action=branchHist&id=${encodeURIComponent(stockId)}&bid=${encodeURIComponent(bid)}`);
-    if (json.status !== 200) throw new Error(json.error || 'backend error');
+  // 單一分點（b=分點代號、bhid=總公司代號）在這檔股票的近期每日進出。Returns {rows:[{date,buy,sell,net}], total}
+  async branchHist(stockId, b, bhid) {
+    const json = await gasGet(`action=branchHist&id=${encodeURIComponent(stockId)}&b=${encodeURIComponent(b)}&bhid=${encodeURIComponent(bhid || b)}`);
+    if (json.status !== 200 || (json.data && json.data.error)) throw new Error(json.error || (json.data && json.data.error) || 'backend error');
+    return json.data;
+  },
+
+  // 單一分點近期買超／賣超哪些股票（period 1=近1日、5=近5日）。Returns {date, buy:[{id,name,buy,sell,net}], sell:[...]}
+  async branchTop(b, bhid, period = 1) {
+    const json = await gasGet(`action=branchTop&b=${encodeURIComponent(b)}&bhid=${encodeURIComponent(bhid || b)}&period=${period}`);
+    if (json.status !== 200 || (json.data && json.data.error)) throw new Error(json.error || (json.data && json.data.error) || 'backend error');
     return json.data;
   },
 
@@ -409,11 +420,14 @@ function twCrossedSession(savedAt) {
   Backend.daily = (stock, days) => swr(`d_${stock.stock_id}_${days}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.daily(stock, days));
   Backend.kbar = (stock, iv) => swr(`k_${stock.stock_id}_${iv}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.kbar(stock, iv));
   Backend.intraday = stock => swr(`i_${stock.stock_id}`, twMarketOpen() ? 15e3 : 30 * 60e3, 1500, () => raw.intraday(stock));
-  Backend.branch = (id, p) => swr(`b_${id}_${p}`, 30 * 60e3, 2000, () => raw.branch(id, p));
+  Backend.branch = (id, p) => swr(`b2_${id}_${p}`, 30 * 60e3, 2000, () => raw.branch(id, p));  // b2_：舊快取的分點代號是錯的
+  Backend.branchTop = (b, bhid, p) => swr(`bt_${b}_${p}`, 30 * 60e3, 3000, () => raw.branchTop(b, bhid, p));
   // 舊版大戶快取（holders_*）已不用，清掉避免佔手機空間
   try { Object.keys(localStorage).filter(k => k.startsWith('holders_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
   Backend.holders = (id, w = 26) => swr(`h_${id}_${w}`, 12 * 3600e3, 1500, () => raw.holders(id, w));
-  Backend.branchHist = (id, bid) => swr(`bh_${id}_${bid}`, 60 * 60e3, 3000, () => raw.branchHist(id, bid));
+  Backend.branchHist = (id, b, bhid) => swr(`bh2_${id}_${b}`, 60 * 60e3, 3000, () => raw.branchHist(id, b, bhid));
+  // 舊版分點快取（代號錯誤）清掉
+  try { Object.keys(localStorage).filter(k => /^bk_(b|bh)_/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
   // 寫入後讓相關快取失效，下次讀到的是新資料
   Backend.upsert = (...a) => raw.upsert(...a).finally(() => BK.drop('list'));
   Backend.bulkUpsert = (...a) => raw.bulkUpsert(...a).finally(() => BK.drop('list'));

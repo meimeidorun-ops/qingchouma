@@ -178,7 +178,7 @@ async function loadBranch() {
         <table class="data-table compact branch-table">
           <thead><tr><th>分點</th><th>買進</th><th>賣出</th><th>${dir === 'up' ? '買超' : '賣超'}</th><th>佔成交</th></tr></thead>
           <tbody>${rows.map(r => `<tr>
-            <td>${r.bid ? `<span class="br-link" data-bid="${r.bid}" data-name="${r.name}">${r.name}</span>` : r.name}</td>
+            <td>${r.bid ? `<span class="br-link" data-bid="${r.bid}" data-bhid="${r.bhid || r.bid}" data-name="${r.name}">${r.name}</span>` : r.name}</td>
             <td>${numFmt(r.buy)}</td>
             <td>${numFmt(r.sell)}</td>
             <td class="barcell ${dir}"><div class="bar ${dir}" style="width:${Math.round((r.net || 0) / max * 100)}%"></div><span>${numFmt(r.net)}</span></td>
@@ -189,17 +189,17 @@ async function loadBranch() {
     body.innerHTML = table(d.buy, 'up') + table(d.sell, 'down') +
       '<div class="branch-note" style="padding-top:0">點分點名稱可看它最近 20 個交易日在這檔的進出。</div>';
     body.querySelectorAll('.br-link').forEach(el =>
-      el.addEventListener('click', () => openBranchHist(stock, el.dataset.bid, el.dataset.name)));
+      el.addEventListener('click', () => openBranchHist(stock, el.dataset.bid, el.dataset.bhid, el.dataset.name)));
   } catch (e) {
     body.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
 // 單一分點在這檔股票最近約 20 個交易日的每日進出
-async function openBranchHist(stock, bid, name) {
+async function openBranchHist(stock, bid, bhid, name) {
   showModal(`<div class="modal-title">${name}｜${stock.stock_name}</div><div class="loading">載入中…</div>`);
   try {
-    const d = await Backend.branchHist(stock.stock_id, bid);
+    const d = await Backend.branchHist(stock.stock_id, bid, bhid);
     if (!$('#modal').classList.contains('active')) return;
     if (!d.rows.length) { $('#modal-card').innerHTML = `<div class="modal-title">${name}</div><div class="error-msg">查無進出紀錄</div>`; return; }
     const max = Math.max(1, ...d.rows.map(r => Math.abs(r.net || 0)));
@@ -222,10 +222,49 @@ async function openBranchHist(stock, bid, name) {
           }).join('')}</tbody>
         </table>
       </div>
-      <button class="modal-btn" id="brh-close" style="text-align:center;margin-top:12px">關閉</button>`;
+      <button class="modal-btn" id="brh-top" style="text-align:center;margin-top:12px">看「${name}」近期買賣哪些股票 ›</button>
+      <button class="modal-btn" id="brh-close" style="text-align:center">關閉</button>`;
+    $('#brh-top').addEventListener('click', () => openBranchTop(bid, bhid, name, 1));
     $('#brh-close').addEventListener('click', closeModal);
   } catch (e) {
     $('#modal-card').innerHTML = `<div class="modal-title">${name}</div><div class="error-msg">載入失敗：${e.message}</div>`;
+  }
+}
+
+// 單一分點近期買超／賣超哪些股票（前 15 名），點股票直接打開
+async function openBranchTop(bid, bhid, name, period) {
+  const head = `<div class="modal-title">${name}｜近期買賣</div>
+    <div class="range-bar" style="padding:0 0 8px">
+      <button class="range-btn ${period === 1 ? 'active' : ''}" data-p="1">近1日</button>
+      <button class="range-btn ${period === 5 ? 'active' : ''}" data-p="5">近5日</button>
+    </div>`;
+  showModal(head + '<div class="loading">載入中…</div>');
+  const wire = () => $$('#modal-card [data-p]').forEach(b => b.addEventListener('click', () => openBranchTop(bid, bhid, name, Number(b.dataset.p))));
+  wire();
+  try {
+    const d = await Backend.branchTop(bid, bhid, period);
+    if (!$('#modal').classList.contains('active')) return;
+    const watched = new Set(getWatchlist().map(s => s.stock_id));
+    const list = (rows, dir) => `
+      <div class="branch-title ${dir}">${dir === 'up' ? '買超' : '賣超'}前 15 檔（張）</div>
+      <table class="data-table compact branch-table"><tbody>${rows.slice(0, 15).map(r => `
+        <tr class="brt-row" data-id="${r.id}" data-name="${r.name}">
+          <td><span class="br-link">${r.name || r.id}</span> <span class="dim">${r.id}${watched.has(r.id) ? ' ★' : ''}</span></td>
+          <td class="${dir}">${r.net > 0 ? '+' : ''}${numFmt(r.net)}</td>
+        </tr>`).join('') || '<tr><td>無資料</td></tr>'}</tbody></table>`;
+    const day = d.date ? `資料日 ${d.date.slice(0, 4)}/${d.date.slice(4, 6)}/${d.date.slice(6)}` : '';
+    $('#modal-card').innerHTML = head + `<div class="brh-sum">${day}　★ = 在自選清單</div>` +
+      `<div class="table-wrap brh-wrap">${list(d.buy, 'up')}${list(d.sell, 'down')}</div>` +
+      `<button class="modal-btn" id="brt-close" style="text-align:center;margin-top:12px">關閉</button>`;
+    wire();
+    $$('#modal-card .brt-row').forEach(tr => tr.addEventListener('click', () => {
+      closeModal();
+      openStock({ stock_id: tr.dataset.id, stock_name: tr.dataset.name || tr.dataset.id });
+    }));
+    $('#brt-close').addEventListener('click', closeModal);
+  } catch (e) {
+    $('#modal-card').innerHTML = head + `<div class="error-msg">載入失敗：${e.message}</div>`;
+    wire();
   }
 }
 
