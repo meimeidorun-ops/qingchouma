@@ -226,10 +226,16 @@ function toastWarn(e) {
 // ---- 還沒成功送到後端的新增/刪除（離線或後端出錯時暫存，下次同步重送）----
 // 2026-10-03：原本同步會把「本機有、後端沒有」的股票一律推回後端，結果在 A 裝置刪掉的股票會被 B 裝置加回來。
 // 改成「後端為準」：只有這台自己新增、還沒送成功的（pending add）才會推上去；這台刪除還沒送成功的（pending remove）會重送刪除。
+// 清掉本機的擁有者資料（清單、分頁、待同步、後端快取）
+function wipeOwnerLocal() {
+  ['watchlist', 'groups', 'active_group', 'wl_pending_add', 'wl_pending_remove'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  ['list', 'groups', 'scores', 'portfolio'].forEach(k => BK.drop(k));
+}
 function pendRead(kind) {
   try { return new Set(JSON.parse(localStorage.getItem('wl_pending_' + kind) || '[]')); } catch (e) { return new Set(); }
 }
 function pendSet(kind, id, on) {
+  if (!isOwner()) return;  // 訪客不累積「待同步」（之後填了密碼也不會把訪客清單推上後端）
   const s = pendRead(kind);
   if (on) s.add(id); else s.delete(id);
   try { localStorage.setItem('wl_pending_' + kind, JSON.stringify([...s])); } catch (e) {}
@@ -796,11 +802,14 @@ async function loadKline(silent = false) {
 // ---- Event wiring ----
 document.addEventListener('DOMContentLoaded', () => {
   ensureStockIndex();
+  // 訪客第一次用新版：清掉這台以前存的擁有者清單（之前清單是公開讀的）。擁有者填密碼後會從後端重新同步。
+  if (!isOwner() && !localStorage.getItem('guest_v1')) { wipeOwnerLocal(); localStorage.setItem('guest_v1', '1'); }
+  $('#guest-note').hidden = isOwner();
   groups = loadGroupsLocal();
   normalizeGroups();
   renderWatchlist();
   // Order matters: merge the flat list first so group ids from the backend aren't pruned.
-  (async () => {
+  if (isOwner()) (async () => {
     // 清單和分頁同時向後端要（原本依序要，等兩次 Apps Script）；套用時仍先清單後分頁
     const groupsP = Backend.getGroups();
     groupsP.catch(() => {});
@@ -985,10 +994,23 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btn-settings-close').addEventListener('click', () => {
     $('#settings-panel').classList.remove('active');
   });
-  $('#btn-save-token').addEventListener('click', () => {
+  $('#btn-save-token').addEventListener('click', async () => {
     localStorage.setItem('finmind_token', $('#token-input').value.trim());
     const bt = $('#backend-token-input').value.trim();
-    if (bt) localStorage.setItem('backend_token', bt); else localStorage.removeItem('backend_token');
+    const prevBt = localStorage.getItem('backend_token') || '';
+    if (bt !== prevBt) {
+      if (bt) {  // 先確認密碼對不對（錯的話後端回 401）
+        try {
+          const r = await (await fetch(`?action=groups&token=${encodeURIComponent(bt)}`)).json();
+          if (r.status === 401) { alert('後端寫入密碼不正確，沒有儲存。'); return; }
+        } catch (e) { console.warn('token check failed', e); }
+      }
+      // 訪客 ⇄ 擁有者：本機清單換掉（擁有者從後端重新同步；登出的裝置不留擁有者資料）
+      wipeOwnerLocal();
+      if (bt) localStorage.setItem('backend_token', bt); else { localStorage.removeItem('backend_token'); localStorage.setItem('guest_v1', '1'); }
+      location.reload();
+      return;
+    }
     $('#settings-panel').classList.remove('active');
   });
 

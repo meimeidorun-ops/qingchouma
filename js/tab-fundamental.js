@@ -128,6 +128,7 @@ async function loadEpsEstimate() {
       }
     }
     $('#eps-pe-row').innerHTML = chips.join('');
+    if (!isOwner()) $('#eps-status').textContent = '訪客模式：預估 EPS 是擁有者功能（到 ⚙ 設定填寫入密碼）';
   } catch (e) {
     $('#eps-status').textContent = `讀取預估EPS失敗：${e.message}`;
   }

@@ -318,3 +318,6 @@ html, body {
 .brh-sum { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
 .brh-sum b { font-size: 15px; }
 .brh-wrap { padding: 0; }
+
+.guest-note { margin: 6px 12px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.guest-note[hidden] { display: none; }

@@ -7,6 +7,9 @@ const BACKEND_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzACbmPhOUL
 function backendUrl() {
   return localStorage.getItem('backend_url') || BACKEND_DEFAULT_URL;
 }
+// 有寫入密碼＝擁有者（同步後端清單）；沒有＝訪客（清單只存在這台裝置，看不到擁有者的清單/EPS/評分/持股）
+function isOwner() { return !!localStorage.getItem('backend_token'); }
+function tokenQs() { return '&token=' + encodeURIComponent(localStorage.getItem('backend_token') || ''); }
 function backendToken() {
   const t = localStorage.getItem('backend_token') || '';
   if (!t) throw new Error('尚未設定後端寫入密碼（請到 ⚙ 設定填一次）');
@@ -128,7 +131,7 @@ function marketFor(stockId) {
 
 const Backend = {
   async list() {
-    const json = await gasGet('action=list');
+    const json = await gasGet('action=list' + tokenQs());
     if (json.status !== 200) throw new Error(json.error || 'backend error');
     return json.data;
   },
@@ -229,7 +232,7 @@ const Backend = {
 
   // 自選股評分＋訊號（Apps Script 算好、快取 30 分鐘）。Returns {asOf, instDates, items:[{id,name,score,parts,pe,yoy,signals,...}]}
   async scores() {
-    const json = await gasGet('action=scores');
+    const json = await gasGet('action=scores' + tokenQs());
     if (json.status !== 200) throw new Error(json.error || 'backend error');
     return json.data;
   },
@@ -267,7 +270,7 @@ const Backend = {
 
   // Watchlist group layout ({groups:[{id,name,ids}]}) shared across devices.
   async getGroups() {
-    const json = await gasGet('action=groups');
+    const json = await gasGet('action=groups' + tokenQs());
     if (json.status !== 200) throw new Error(json.error || 'backend error');
     return json.data;
   },
@@ -412,8 +415,8 @@ function twCrossedSession(savedAt) {
   const qKey = stocks => 'q_' + bkHash(stocks.map(s => s.stock_id).join(','));
   Backend.quoteKey = qKey;
   const qTtl = () => (twMarketOpen() ? 15e3 : 10 * 60e3);
-  Backend.list = () => swr('list', 60e3, 1500, raw.list);
-  Backend.getGroups = () => swr('groups', 60e3, 1500, raw.getGroups);
+  Backend.list = () => !isOwner() ? Promise.resolve([]) : swr('list', 60e3, 1500, raw.list);  // 訪客看不到擁有者清單/EPS
+  Backend.getGroups = () => !isOwner() ? Promise.resolve(null) : swr('groups', 60e3, 1500, raw.getGroups);
   Backend.quote = stocks => swr(qKey(stocks), qTtl(), 1500, () => raw.quote(stocks));
   Backend.quotePeek = stocks => { const c = BK.read(qKey(stocks)); return c ? c.d : null; };
   // 首頁用：快取夠新就用；否則一定去抓，抓不到要「丟錯」讓畫面知道（不能默默回傳昨天的舊報價——
@@ -428,7 +431,7 @@ function twCrossedSession(savedAt) {
   Backend.kbar = (stock, iv) => swr(`k_${stock.stock_id}_${iv}`, twMarketOpen() ? 60e3 : 60 * 60e3, 2000, () => raw.kbar(stock, iv));
   Backend.intraday = stock => swr(`i_${stock.stock_id}`, twMarketOpen() ? 15e3 : 30 * 60e3, 1500, () => raw.intraday(stock));
   Backend.branch = (id, p) => swr(`b2_${id}_${p}`, 30 * 60e3, 2000, () => raw.branch(id, p));  // b2_：舊快取的分點代號是錯的
-  Backend.scores = () => swr('scores', 30 * 60e3, 1500, () => raw.scores());
+  Backend.scores = () => !isOwner() ? Promise.reject(new Error('guest')) : swr('scores', 30 * 60e3, 1500, () => raw.scores());
   Backend.branchTop = (b, bhid, p) => swr(`bt_${b}_${p}`, 30 * 60e3, 3000, () => raw.branchTop(b, bhid, p));
   // 舊版大戶快取（holders_*）已不用，清掉避免佔手機空間
   try { Object.keys(localStorage).filter(k => k.startsWith('holders_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
@@ -437,8 +440,11 @@ function twCrossedSession(savedAt) {
   // 舊版分點快取（代號錯誤）清掉
   try { Object.keys(localStorage).filter(k => /^bk_(b|bh)_/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
   // 寫入後讓相關快取失效，下次讀到的是新資料
-  Backend.upsert = (...a) => raw.upsert(...a).finally(() => BK.drop('list'));
-  Backend.bulkUpsert = (...a) => raw.bulkUpsert(...a).finally(() => BK.drop('list'));
-  Backend.remove = (...a) => raw.remove(...a).finally(() => BK.drop('list'));
-  Backend.setGroups = (...a) => raw.setGroups(...a).finally(() => BK.drop('groups'));
+  // 訪客：加減股票只存本機（不送後端）；EPS、匯入、分頁同步是擁有者功能
+  const guestOnly = msg => () => Promise.reject(new Error(msg));
+  Backend.upsert = (stock, eps) => !isOwner() ? (eps && eps.epsYear !== undefined ? guestOnly('訪客模式不能儲存預估 EPS')() : Promise.resolve({ status: 200, guest: true }))
+    : raw.upsert(stock, eps).finally(() => BK.drop('list'));
+  Backend.bulkUpsert = (...a) => !isOwner() ? guestOnly('訪客模式不能匯入')() : raw.bulkUpsert(...a).finally(() => BK.drop('list'));
+  Backend.remove = (...a) => !isOwner() ? Promise.resolve({ status: 200, guest: true }) : raw.remove(...a).finally(() => BK.drop('list'));
+  Backend.setGroups = (...a) => !isOwner() ? Promise.resolve({ status: 200, guest: true }) : raw.setGroups(...a).finally(() => BK.drop('groups'));
 })();
