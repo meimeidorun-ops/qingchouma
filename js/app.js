@@ -333,9 +333,27 @@ async function openStock(stock) {
     loadRealtime(true);
   }, 15000);
 
+  paintDetailScore(stock);
   await loadRealtime();
   loadedTabs.rt = true;
   prefetchStock(stock);
+}
+
+// 個股頁標題下方：評分＋訊號（只有自選股有分數；點一下看細項）
+async function paintDetailScore(stock) {
+  const box = $('#dt-score');
+  box.hidden = true;
+  let it = scoreMap.get(stock.stock_id);
+  if (!it) {
+    try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, x])); } catch (e) { return; }
+    it = scoreMap.get(stock.stock_id);
+  }
+  if (!it || currentStock !== stock) return;
+  const sigs = (it.signals || []).slice().sort((a, b) => (b.level === 'warn') - (a.level === 'warn'));
+  box.innerHTML = `<span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span><span class="dt-score-lbl">評分</span>` +
+    sigs.map(s => `<span class="sc-sig ${s.level}">${sigShort(s)}</span>`).join('') + '<span class="dt-score-more">細項 ›</span>';
+  box.onclick = () => openScoreDetail(stock.stock_id);
+  box.hidden = false;
 }
 
 // 看「即時」的同時，背景先把其他頁籤的資料抓好存進快取，切頁籤時幾乎不用等。

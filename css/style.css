@@ -175,6 +175,11 @@ html, body {
 .sc-mid { background: rgba(242,199,68,0.2); color: #f2c744; }
 .sc-lo { background: rgba(139,148,158,0.18); color: var(--text-dim); }
 .sc-sig { margin-left: 6px; font-size: 11px; }
+.dt-score { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; padding: 4px 12px 6px; font-size: 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.dt-score[hidden] { display: none; }
+.dt-score .sc-badge { margin-left: 0; }
+.dt-score-lbl { margin-left: 4px; color: var(--text-dim); font-size: 11px; }
+.dt-score-more { margin-left: auto; padding-left: 8px; color: var(--text-dim); font-size: 11px; }
 .sc-sig.good { color: #f87171; }
 .sc-sig.warn { color: #4ade80; }
 .sd-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; }
