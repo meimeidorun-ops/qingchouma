@@ -132,6 +132,7 @@ function marketFor(stockId) {
 const Backend = {
   async list() {
     const json = await gasGet('action=list' + tokenQs());
+    if (json.status === 401) throw new Error('後端寫入密碼不正確（請到 ⚙ 設定重新填）');
     if (json.status !== 200) throw new Error(json.error || 'backend error');
     return json.data;
   },
@@ -233,6 +234,7 @@ const Backend = {
   // 自選股評分＋訊號（Apps Script 算好、快取 30 分鐘）。Returns {asOf, instDates, items:[{id,name,score,parts,pe,yoy,signals,...}]}
   async scores() {
     const json = await gasGet('action=scores' + tokenQs());
+    if (json.status === 401) throw new Error('後端寫入密碼不正確（請到 ⚙ 設定重新填）');
     if (json.status !== 200) throw new Error(json.error || 'backend error');
     return json.data;
   },
@@ -271,6 +273,7 @@ const Backend = {
   // Watchlist group layout ({groups:[{id,name,ids}]}) shared across devices.
   async getGroups() {
     const json = await gasGet('action=groups' + tokenQs());
+    if (json.status === 401) throw new Error('後端寫入密碼不正確（請到 ⚙ 設定重新填）');
     if (json.status !== 200) throw new Error(json.error || 'backend error');
     return json.data;
   },

@@ -813,7 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 清單和分頁同時向後端要（原本依序要，等兩次 Apps Script）；套用時仍先清單後分頁
     const groupsP = Backend.getGroups();
     groupsP.catch(() => {});
-    try { await syncWatchlistFromBackend(); } catch (e) { console.warn('watchlist sync failed', e); }
+    try { await syncWatchlistFromBackend(); } catch (e) { console.warn('watchlist sync failed', e); toastWarn(/token|密碼/.test(e.message) ? new Error('後端寫入密碼不正確或已失效，清單沒有同步。請到 ⚙ 設定重新貼上密碼。') : e); }
     try { await syncGroupsFromBackend(groupsP); } catch (e) { console.warn('groups sync failed', e); normalizeGroups(); saveGroups(false); }
     renderWatchlist();
   })();
