@@ -547,9 +547,14 @@ function openScoreDetail(id) {
 // 首頁報價更新：盤中每 20 秒一次、從背景切回 App 時立刻一次（只更新數字，不重畫清單）。
 let wlList = [];
 let wlBusy = false;
+// 2026-10-06 修：上一次更新還在等（例如興櫃股要等 Google 補收盤價 10～20 秒）時清單被重畫（同步完成、切分頁），
+// 原本新的更新會被跳過、舊的那次又因為清單換了而放棄 → 整頁停在「載入中」（盤後不會自動重試）。
+// 現在：忙的時候記下「要再跑一次」，舊的那次抓到的報價也先畫到目前畫面上。
+let wlAgain = false;
 async function refreshWatchlistQuotes(list = wlList) {
   wlList = list;
-  if (!list.length || wlBusy) return;
+  if (!list.length) return;
+  if (wlBusy) { wlAgain = true; return; }
   wlBusy = true;
   try {
     let quotes = {};
@@ -560,7 +565,7 @@ async function refreshWatchlistQuotes(list = wlList) {
       failed = true;
       console.warn('live quote fetch failed', e);
     }
-    if (wlList !== list) return;
+    if (wlList !== list) { if (!failed) await paintWatchlistQuotes(wlList, quotes, true); return; }
     // 即時報價這次失敗、但手機裡已有「今天」的報價 → 保留它（別用昨天收盤價蓋掉），標示更新失敗，20 秒後會再試。
     const cached = failed ? Backend.quotePeek(list) : null;
     if (failed && cached && quotesAreToday(cached)) {
@@ -572,6 +577,7 @@ async function refreshWatchlistQuotes(list = wlList) {
     if (failed && !/收盤價/.test($('#wl-updated').textContent)) paintQuoteTime({}, true);
   } finally {
     wlBusy = false;
+    if (wlAgain) { wlAgain = false; refreshWatchlistQuotes(); }
   }
 }
 
