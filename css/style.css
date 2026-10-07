@@ -321,3 +321,5 @@ html, body {
 
 .guest-note { margin: 6px 12px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
 .guest-note[hidden] { display: none; }
+
+#wl-updated { cursor: pointer; }

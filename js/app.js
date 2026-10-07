@@ -565,6 +565,7 @@ async function refreshWatchlistQuotes(list = wlList) {
       failed = true;
       console.warn('live quote fetch failed', e);
     }
+    qlogPush(quotes, failed);
     if (wlList !== list) { if (!failed) await paintWatchlistQuotes(wlList, quotes, true); return; }
     // 即時報價這次失敗、但手機裡已有「今天」的報價 → 保留它（別用昨天收盤價蓋掉），標示更新失敗，20 秒後會再試。
     const cached = failed ? Backend.quotePeek(list) : null;
@@ -604,7 +605,32 @@ function paintQuoteTime(quotes, failed = false) {
   const q = vals.reduce((a, b) => ((a.date + a.time) >= (b.date + b.time) ? a : b));
   const day = q.date && q.date !== twToday() ? `${q.date.slice(4, 6)}/${q.date.slice(6, 8)} ` : '';
   const src = vals.some(v => v.src === 'yahoo') ? '・Yahoo' : vals.some(v => v.src === 'cnyes') ? '・鉅亨' : '・證交所';
-  el.textContent = `報價時間 ${day}${q.time}${src}${why || (twMarketOpen() ? '　盤中每 20 秒更新' : '')}`;
+  const lag = quoteLagMin(quotes);
+  const lagTxt = lag != null && lag > 3 ? `（延遲 ${lag} 分）` : '';
+  el.textContent = `報價時間 ${day}${q.time}${src}${lagTxt}${why || (twMarketOpen() ? '　盤中每 20 秒更新' : '')}`;
+}
+
+// 報價更新紀錄（最近 30 次）：點清單上方的「報價時間」可以看，出問題時截圖就知道是哪一段壞
+function qlogPush(quotes, failed) {
+  try {
+    const d = Backend.quoteDiag || {};
+    const vals = Object.values(quotes || {}).filter(q => q && q.time);
+    const newest = vals.length ? vals.reduce((a, b) => ((a.date + a.time) >= (b.date + b.time) ? a : b)) : null;
+    const log = JSON.parse(localStorage.getItem('qlog') || '[]');
+    log.unshift({ at: new Date(Date.now() + 8 * 3600e3).toISOString().slice(5, 19).replace('T', ' '), ok: !failed,
+      src: `鉅亨 ${d.cnyes || '—'}／Google ${d.gas || '—'}／快速 ${d.fast || '—'}`, newest: newest ? newest.time : '—', n: vals.length });
+    localStorage.setItem('qlog', JSON.stringify(log.slice(0, 30)));
+  } catch (e) {}
+}
+function openQuoteLog() {
+  let log = [];
+  try { log = JSON.parse(localStorage.getItem('qlog') || '[]'); } catch (e) {}
+  showModal(`
+    <div class="modal-title">報價更新紀錄（最近 30 次）</div>
+    <div class="dim" style="margin-bottom:6px">時間｜結果｜最新成交時間｜檔數｜各來源狀態</div>
+    <div style="font-size:12px;line-height:1.6;max-height:60vh;overflow:auto">${log.map(r => `<div>${r.at}｜${r.ok ? '✓' : '⚠ 失敗'}｜${r.newest}｜${r.n}｜${r.src}</div>`).join('') || '<div class="dim">還沒有紀錄</div>'}</div>
+    <button class="modal-btn" id="ql-close" style="text-align:center;margin-top:10px">關閉</button>`);
+  $('#ql-close').addEventListener('click', closeModal);
 }
 
 async function paintWatchlistQuotes(list, quotes, cachedOnly) {
@@ -847,6 +873,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('#btn-group-menu').addEventListener('click', openGroupMenu);
+  $('#wl-updated').addEventListener('click', openQuoteLog);
   $('#wl-sort').addEventListener('click', () => {
     wlSortMode = wlSortMode === 'score' ? 'custom' : 'score';
     try { localStorage.setItem('wl_sort2', wlSortMode); } catch (e) {}

@@ -295,18 +295,26 @@ const Backend = {
   async quote(stocks) {
     if (!stocks.length) return {};
     // 先問鉅亨（手機直連、最快）；拿到大部分（≥70%，興櫃本來就沒有）就直接用。
+    let cnyesStale = null;  // 鉅亨有資料但延遲：先改問證交所，都抓不到才用它
     if (localStorage.getItem('cnyes_off') !== '1') {
       try {
         const c = await cnyesQuotes(stocks);
         const n = Object.keys(c).length;
         if (n && n >= Math.ceil(stocks.length * 0.7)) {
-          Backend.quoteDiag = { cnyes: '鉅亨', gas: '—', fast: '—', at: Date.now() };
           noteMarketClosed(c);
-          return c;
+          const lag = quoteLagMin(c);
+          if (lag == null || lag <= 3) {
+            Backend.quoteDiag = { cnyes: '鉅亨', gas: '—', fast: '—', at: Date.now() };
+            return c;
+          }
+          // 2026-10-07：盤中最新成交時間比現在慢 3 分鐘以上 → 鉅亨延遲，改用證交所 MIS（Google / 快速後端）
+          cnyesStale = c;
+          Backend.quoteDiag = { cnyes: `延遲 ${lag} 分` };
+          throw new Error('cnyes delayed');
         }
         Backend.quoteDiag = { cnyes: `只拿到 ${n}/${stocks.length}` };
       } catch (e) {
-        Backend.quoteDiag = { cnyes: e && e.name === 'AbortError' ? '逾時' : '失敗' };
+        if (!cnyesStale) Backend.quoteDiag = { cnyes: e && e.name === 'AbortError' ? '逾時' : '失敗' };
         console.warn('cnyes quote failed, fallback', e);
       }
     }
@@ -353,6 +361,7 @@ const Backend = {
       gas.then(settle);
       fast.then(settle);
     });
+    if (!data && cnyesStale) return cnyesStale;  // 證交所也抓不到 → 用延遲的鉅亨（畫面會標示延遲）
     if (!data) throw new Error(`quote unavailable (Google:${diag.gas} 快速:${diag.fast})`);
     return data;
   },
@@ -394,6 +403,17 @@ function twMarketOpen() {
   // 國定假日（例：10/10）：當天 09:15 後報價全都不是今天 → 記下「今天休市」，不再當盤中
   try { if (localStorage.getItem('tw_closed_day') === n.toISOString().slice(0, 10).replace(/-/g, '')) return false; } catch (e) {}
   return true;
+}
+// 盤中報價延遲幾分鐘：今天最新一筆成交時間 vs 現在（收盤後、非盤中回 null）
+function quoteLagMin(quotes) {
+  if (!twMarketOpen()) return null;
+  const n = new Date(Date.now() + 8 * 3600e3);
+  const today = n.toISOString().slice(0, 10).replace(/-/g, '');
+  const nowMin = Math.min(n.getUTCHours() * 60 + n.getUTCMinutes(), 810);  // 13:30 之後不算延遲
+  const mins = Object.values(quotes || {}).filter(q => q && q.date === today && q.time)
+    .map(q => Number(q.time.slice(0, 2)) * 60 + Number(q.time.slice(3, 5)));
+  if (!mins.length || nowMin < 545) return null;  // 09:05 前剛開盤，不判斷
+  return Math.max(0, nowMin - Math.max(...mins));
 }
 // 由報價判斷今天是否休市（在 Backend.quote 拿到資料後呼叫）
 function noteMarketClosed(quotes) {
