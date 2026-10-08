@@ -7,6 +7,7 @@ const Portfolio = {
   lots: [],
   settings: null,
   advice: null,
+  midlong: null,  // 中長線核心衛星模擬帳戶（Agent midlong_paper.py 寫回）
   quotes: {},
   eps: {},
   view: 'open',
@@ -29,13 +30,14 @@ const Portfolio = {
     this.lots = json.data.lots || [];
     this.settings = json.data.settings;
     this.advice = json.data.advice;
+    this.midlong = json.data.midlong || null;
     try { localStorage.setItem('portfolio_cache', JSON.stringify(json.data)); } catch (e) {}
   },
 
   loadCache() {
     try {
       const c = JSON.parse(localStorage.getItem('portfolio_cache') || 'null');
-      if (c) { this.lots = c.lots || []; this.settings = c.settings; this.advice = c.advice; return true; }
+      if (c) { this.lots = c.lots || []; this.settings = c.settings; this.advice = c.advice; this.midlong = c.midlong || null; return true; }
     } catch (e) {}
     return false;
   },
@@ -142,6 +144,8 @@ function renderPortfolio() {
       <div class="pf-plan-row"><span>持股檔數</span><b>${planCount.size} / ${s.max_positions || 5}</b></div>
       <div class="pf-plan-row"><span>帳戶保險絲</span><span class="pf-chip ${fuse[0]}">${fuse[1]}</span></div>
     </div>`;
+
+  renderMidlong();
 
   // ---- Agent 建議 ----
   const a = Portfolio.advice;
@@ -371,3 +375,32 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btn-pf-settings').addEventListener('click', pfSettingsForm);
   $$('#pf-tabs .range-btn').forEach(b => b.addEventListener('click', () => { Portfolio.view = b.dataset.view; renderPortfolio(); }));
 });
+
+// 中長線核心衛星（模擬帳戶）：核心 0050 70%＋衛星（新版評分前 10 名）30%，每季換股。資料由電腦上的 Agent 每天 18:45 算好寫回。
+function renderMidlong() {
+  const box = $('#pf-midlong');
+  if (!box) return;
+  const m = Portfolio.midlong;
+  if (!m || m.test) { box.innerHTML = ''; return; }
+  const pct = v => (v == null ? '—' : pctFmt(v * 100, 2));
+  const rows = (m.positions || []).map(p => {
+    const pp = p.value && p.value - p.pnl ? p.pnl / (p.value - p.pnl) : null;
+    return `<div class="pf-ml-row"><span>${pfEsc(p.name)} <span class="hint">${pfEsc(p.id)}</span></span>
+      <span class="hint">${numFmt(p.shares)} 股・${p.last != null ? numFmt(p.last, 2) : '—'}・${(p.w * 100).toFixed(0)}%</span>
+      <b class="${signClass(p.pnl)}">${p.pnl >= 0 ? '+' : ''}${numFmt(p.pnl)}（${pct(pp)}）</b></div>`;
+  }).join('');
+  const pend = (m.pending || []).map(o => `<li>${o.type === 'sell' ? '賣' : '買'} ${pfEsc(o.name)} ${pfEsc(o.id)}${o.type === 'sell' ? ` ${numFmt(o.shares)} 股` : ` 約 ${numFmt(o.amount)} 元`}</li>`).join('');
+  box.innerHTML = `<div class="pf-card">
+    <div class="pf-card-title">中長線核心衛星（模擬） <span class="hint">${pfEsc(m.at || '')}</span></div>
+    <div class="pf-plan">
+      <div class="pf-plan-row"><span>帳戶（本金 ${numFmt(m.capital)}，${pfEsc(m.start)} 起）</span><b class="${signClass(m.pnl_pct)}">${numFmt(m.equity)}（${pct(m.pnl_pct)}）</b></div>
+      <div class="pf-plan-row"><span>同期 0050${m.bench_from ? `（${pfEsc(m.bench_from)} 起）` : ''}</span><b class="${signClass(m.bench_pct)}">${pct(m.bench_pct)}</b></div>
+      <div class="pf-plan-row"><span>核心 0050 比例（目標 70%）</span><b>${(m.core_w * 100).toFixed(0)}%</b></div>
+      <div class="pf-plan-row"><span>現金</span><b>${numFmt(m.cash)}</b></div>
+      <div class="pf-plan-row"><span>下次換股</span><b>${pfEsc(m.next_rebal || '—')}</b></div>
+    </div>
+    ${rows ? `<div class="pf-ml-list">${rows}</div>` : ''}
+    ${pend ? `<div class="pf-card-title" style="margin-top:10px">下個交易日開盤</div><ul class="pf-list">${pend}</ul>` : ''}
+    <p class="hint">規則：核心 0050 70%＋衛星＝新版評分前 10 名各一份（30%）；每季（1/4/7/10 月 15 日後）換股，核心偏離 70% 超過 10 個百分點調回；收盤後決定、隔天開盤價成交。系統模擬，未實際下單。</p>
+  </div>`;
+}

@@ -155,6 +155,10 @@
       </div>
 
       <div class="tab-pane" id="pane-branch">
+        <div class="range-bar" id="branch-mode">
+          <button class="range-btn active" data-mode="stock">股票分點</button>
+          <button class="range-btn" data-mode="warrant">權證分點</button>
+        </div>
         <div class="range-bar" id="branch-range">
           <button class="range-btn active" data-period="1">近1日</button>
           <button class="range-btn" data-period="2">近5日</button>
@@ -163,7 +167,7 @@
         </div>
         <div class="branch-summary" id="branch-summary"></div>
         <div id="branch-body"></div>
-        <div class="branch-note">資料來源：券商公開「主力進出」頁（買超／賣超前 15 名分點，單位：張）。盤後約傍晚更新。</div>
+        <div class="branch-note" id="branch-note">資料來源：券商公開「主力進出」頁（買超／賣超前 15 名分點，單位：張）。盤後約傍晚更新。</div>
       </div>
 
       <div class="tab-pane" id="pane-revenue">
@@ -266,6 +270,7 @@
     </div>
     <div class="pf-scroll">
       <div id="pf-summary" class="pf-summary"></div>
+      <div id="pf-midlong"></div>
       <div id="pf-advice"></div>
       <div class="range-bar" id="pf-tabs">
         <button class="range-btn active" data-view="open">持有中</button>

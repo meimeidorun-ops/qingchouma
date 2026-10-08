@@ -153,7 +153,119 @@ async function loadMargin() {
 
 // ---- 分點 ----
 const BRANCH_LABEL = { 1: '近1日', 2: '近5日', 3: '近10日', 4: '近20日' };
+const BRANCH_NOTE_STOCK = '資料來源：券商公開「主力進出」頁（買超／賣超前 15 名分點，單位：張）。盤後約傍晚更新。';
+const BRANCH_NOTE_WB = '權證分點：每天收盤後掃描全市場成交金額 ≥30 萬的權證（約 5,000 支），把同一個分點在這檔股票所有權證的買賣超加總（金額＝張數×權證收盤價）。已排除發行商自己的造市席位；「總公司」常是券商自營。約 20:10 更新，資料由 權證超跌反彈/export_app.py 產生。';
+let branchMode = localStorage.getItem('branch_mode') === 'warrant' ? 'warrant' : 'stock';
+
+// 「股票分點 | 權證分點」切換（期間按鈕共用：權證分點時＝近 N 個掃描日）
+function paintBranchMode() {
+  $$('#branch-mode .range-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === branchMode));
+  const note = $('#branch-note');
+  if (note) note.textContent = branchMode === 'warrant' ? BRANCH_NOTE_WB : BRANCH_NOTE_STOCK;
+}
+$$('#branch-mode .range-btn').forEach(btn => btn.addEventListener('click', () => {
+  branchMode = btn.dataset.mode;
+  localStorage.setItem('branch_mode', branchMode);
+  paintBranchMode();
+  loadBranch();
+}));
+paintBranchMode();
+
+const wbCache = {};
+async function fetchWarrantBranch(id) {
+  const key = `${id}_${Math.floor(Date.now() / 6e5)}`;  // 10 分鐘內同一份
+  if (wbCache[key]) return wbCache[key];
+  const res = await fetch(`wb/${encodeURIComponent(id)}.json?t=${Math.floor(Date.now() / 6e5)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (wbCache[key] = await res.json());
+}
+
+const wan = v => `${v > 0 ? '+' : ''}${numFmt(Math.round(v / 1e4))}`;
+
+async function loadWarrantBranch() {
+  const body = $('#branch-body');
+  const sum = $('#branch-summary');
+  const stock = currentStock;
+  body.innerHTML = '<div class="loading">載入中…</div>';
+  sum.innerHTML = '';
+  try {
+    const d = await fetchWarrantBranch(stock.stock_id);
+    if (stock !== currentStock) return;
+    if (!d || !d.br.length) {
+      body.innerHTML = '<div class="error-msg">沒有權證分點資料（沒有發行權證，或近 20 個掃描日沒有分點大量進出這檔的權證）</div>';
+      return;
+    }
+    const want = { 1: 1, 2: 5, 3: 10, 4: 20 }[branchPeriod];
+    const days = d.days.slice(0, want);
+    const rows = d.br.map(b => {
+      let call = 0, put = 0, buyD = 0, sellD = 0;
+      days.forEach(dt => {
+        const v = b.d[dt];
+        if (!v) return;
+        call += v[0]; put += v[1];
+        if (v[0] > 0) buyD++; else if (v[0] < 0) sellD++;
+      });
+      return { ...b, call, put, buyD, sellD };
+    }).filter(r => r.call || r.put);
+    const buy = rows.filter(r => r.call > 0).sort((a, b) => b.call - a.call).slice(0, 15);
+    const sell = rows.filter(r => r.call < 0).sort((a, b) => a.call - b.call).slice(0, 10);
+    const bear = rows.filter(r => r.put > 0).sort((a, b) => b.put - a.put).slice(0, 5);
+    const totBuy = buy.reduce((s, r) => s + r.call, 0);
+    const short = days.length < want ? `（資料庫目前只有 ${days.length} 天）` : '';
+    sum.innerHTML = `
+      <span>資料日 <b>${d.days[0]}</b>（近 ${days.length} 個掃描日${short}）</span>
+      <span>前 ${buy.length} 名認購淨買 <b class="up">${wan(totBuy)}</b> 萬</span>`;
+    const max = Math.max(1, ...buy.map(r => r.call), ...sell.map(r => -r.call));
+    const table = (list, dir) => !list.length ? '' : `
+      <div class="branch-title ${dir}">${dir === 'up' ? '收購認購權證的分點' : '賣出認購權證的分點'}（萬元）</div>
+      <div class="table-wrap" style="padding-bottom:4px">
+        <table class="data-table compact branch-table">
+          <thead><tr><th>分點</th><th>認購淨額</th><th>買/賣天</th><th>認售</th></tr></thead>
+          <tbody>${list.map(r => `<tr>
+            <td><span class="br-link wb-link" data-n="${r.n}">${r.n}</span>${r.hq ? ' <span class="dim">總公司</span>' : ''}</td>
+            <td class="barcell ${dir}"><div class="bar ${dir}" style="width:${Math.round(Math.abs(r.call) / max * 100)}%"></div><span>${wan(r.call)}</span></td>
+            <td>${r.buyD}/${r.sellD}</td>
+            <td>${r.put ? wan(r.put) : '—'}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+    const bearHtml = !bear.length ? '' : `<div class="branch-title down">買認售（看空）</div>
+      <div class="branch-note" style="padding-top:0">${bear.map(r => `${r.n} ${wan(r.put)} 萬`).join('、')}</div>`;
+    body.innerHTML = table(buy, 'up') + table(sell, 'down') + bearHtml +
+      '<div class="branch-note" style="padding-top:0">買/賣天＝期間內淨買、淨賣認購的天數。點分點名稱看每天明細與買了哪些權證。</div>';
+    body.querySelectorAll('.wb-link').forEach(el =>
+      el.addEventListener('click', () => openWarrantBranchHist(stock, d, el.dataset.n)));
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+  }
+}
+
+function openWarrantBranchHist(stock, d, name) {
+  const b = d.br.find(x => x.n === name);
+  if (!b) return;
+  const rows = d.days.filter(dt => b.d[dt]).map(dt => ({ dt, call: b.d[dt][0], put: b.d[dt][1] }));
+  const max = Math.max(1, ...rows.map(r => Math.abs(r.call)));
+  showModal(`
+    <div class="modal-title">${name}｜${stock.stock_name} 權證</div>
+    <div class="brh-sum">買最多的權證：${b.w.join('、') || '—'}</div>
+    <div class="table-wrap brh-wrap">
+      <table class="data-table compact branch-table">
+        <thead><tr><th>日期</th><th>認購淨額（萬）</th><th>認售（萬）</th></tr></thead>
+        <tbody>${rows.map(r => {
+          const dir = r.call >= 0 ? 'up' : 'down';
+          return `<tr><td>${r.dt.slice(5)}</td>
+            <td class="barcell ${dir}"><div class="bar ${dir}" style="width:${Math.round(Math.abs(r.call) / max * 100)}%"></div><span>${wan(r.call)}</span></td>
+            <td>${r.put ? wan(r.put) : '—'}</td></tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+    <button class="modal-btn" id="wbh-close" style="text-align:center;margin-top:12px">關閉</button>`);
+  $('#wbh-close').addEventListener('click', closeModal);
+}
+
 async function loadBranch() {
+  if (branchMode === 'warrant') return loadWarrantBranch();
   const body = $('#branch-body');
   const sum = $('#branch-summary');
   const stock = currentStock;
