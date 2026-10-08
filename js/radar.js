@@ -68,8 +68,11 @@ async function openRadar() {
   }
 }
 
-// 打開個股頁並直接切到「分點 › 權證分點」
+// 打開個股頁並直接切到「分點 › 權證分點」；記住是從雷達來的 → 個股頁按返回回到雷達（同一個捲動位置）
 function radarOpenStock(id, name) {
+  const sc = $('#screen-radar .pf-scroll');
+  Radar.scroll = sc ? sc.scrollTop : 0;
+  Radar.fromRadar = true;
   branchMode = 'warrant';
   localStorage.setItem('branch_mode', 'warrant');
   paintBranchMode();
@@ -79,8 +82,18 @@ function radarOpenStock(id, name) {
   setTimeout(() => { const t = document.querySelector('.tab-btn[data-tab="branch"]'); if (t) t.click(); }, 50);
 }
 
-$('#btn-radar').addEventListener('click', () => openRadar());
-$('#btn-rd-back').addEventListener('click', () => goHome());
+$('#btn-radar').addEventListener('click', () => { Radar.scroll = 0; openRadar(); });
+$('#btn-rd-back').addEventListener('click', () => { Radar.fromRadar = false; goHome(); });
+// 個股頁的返回鍵（app.js 綁 goHome）：從雷達來的就攔下來改回雷達。用 capture 階段，先於 app.js 的處理。
+$('#btn-back').addEventListener('click', async e => {
+  if (!Radar.fromRadar) return;
+  e.stopImmediatePropagation();
+  Radar.fromRadar = false;
+  stopRtTimer();
+  await openRadar();
+  const sc = $('#screen-radar .pf-scroll');
+  if (sc) sc.scrollTop = Radar.scroll || 0;
+}, true);
 $$('#rd-range .range-btn').forEach(b => b.addEventListener('click', () => {
   Radar.n = Number(b.dataset.n);
   localStorage.setItem('rd_n', Radar.n);
