@@ -1,4 +1,4 @@
-const CACHE = 'qingchoumaka-v45';
+const CACHE = 'qingchoumaka-v46';
 const ASSETS = [
   './',
   'index.html',
@@ -12,6 +12,7 @@ const ASSETS = [
   'js/tab-fundamental.js',
   'js/import.js',
   'js/portfolio.js',
+  'js/radar.js',
   'manifest.json',
 ];
 

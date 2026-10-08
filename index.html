@@ -22,6 +22,7 @@
     <div class="topbar">
       <div class="title">輕籌碼</div>
       <div class="spacer"></div>
+      <button class="icon-btn" id="btn-radar" aria-label="權證分點雷達">🎯</button>
       <button class="icon-btn" id="btn-portfolio" aria-label="操作計畫">💼</button>
       <button class="icon-btn" id="btn-settings">⚙</button>
     </div>
@@ -280,6 +281,29 @@
     </div>
   </section>
 
+  <!-- ================= 權證分點雷達（全市場） ================= -->
+  <section id="screen-radar" class="screen">
+    <div class="topbar">
+      <button class="back-btn" id="btn-rd-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">權證分點雷達</div>
+      <div class="spacer"></div>
+    </div>
+    <div class="pf-scroll">
+      <div class="range-bar" id="rd-range">
+        <button class="range-btn" data-n="1">近1日</button>
+        <button class="range-btn" data-n="5">近5日</button>
+        <button class="range-btn" data-n="10">近10日</button>
+        <button class="range-btn" data-n="20">近20日</button>
+      </div>
+      <div class="range-bar">
+        <button class="range-btn" id="rd-steady">🔁 只看持續買進</button>
+        <button class="range-btn" id="rd-nohq">排除總公司</button>
+      </div>
+      <div class="branch-summary" id="rd-summary"></div>
+      <div id="rd-list"></div>
+    </div>
+  </section>
+
   <div class="modal" id="modal"><div class="modal-card" id="modal-card"></div></div>
 
   <!-- ================= SETTINGS ================= -->
@@ -327,6 +351,7 @@
 <script src="js/tab-fundamental.js"></script>
 <script src="js/import.js"></script>
 <script src="js/portfolio.js"></script>
+<script src="js/radar.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
