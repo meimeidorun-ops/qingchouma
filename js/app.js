@@ -559,8 +559,10 @@ async function refreshWatchlistQuotes(list = wlList) {
   try {
     let quotes = {};
     let failed = false;
+    const lbl = $('#wl-updated');
+    if (lbl && !/更新中/.test(lbl.textContent)) lbl.textContent = (lbl.textContent ? lbl.textContent + '　' : '') + '⟳ 更新中';
     try {
-      quotes = await Backend.quoteFresh(list);
+      quotes = await Backend.quoteFresh(list, true);  // 一律抓最新（不用手機裡的暫存）
     } catch (e) {
       failed = true;
       console.warn('live quote fetch failed', e);
@@ -854,16 +856,20 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(() => {
     if (!document.hidden && homeActive() && twMarketOpen()) refreshWatchlistQuotes();
   }, 20000);
-  let hiddenAt = 0;
+  // 2026-10-08：每次回到 App（切回前景、從主畫面重開、視窗取得焦點）都立刻抓最新報價（不看離開多久）；
+  // 幾個事件常會連續觸發，1.5 秒內只做一次。
+  let lastResume = 0;
   const onResume = () => {
-    if (document.hidden) { hiddenAt = Date.now(); return; }
-    if (Date.now() - hiddenAt < 5000) return;
+    if (document.hidden) return;
+    if (Date.now() - lastResume < 1500) return;
+    lastResume = Date.now();
     if (homeActive()) refreshWatchlistQuotes();
     else if (currentStock && $('#screen-detail').classList.contains('active') && $('#pane-rt').classList.contains('active')) loadRealtime(true);
     else if (currentStock && $('#screen-detail').classList.contains('active') && $('#pane-kline').classList.contains('active')) loadKline(true);
   };
   document.addEventListener('visibilitychange', onResume);
-  window.addEventListener('pageshow', e => { if (e.persisted) { hiddenAt = 0; onResume(); } });
+  window.addEventListener('pageshow', onResume);
+  window.addEventListener('focus', onResume);
   // 快取先顯示了舊資料、新資料回來了 → 馬上換上去
   window.addEventListener('bk-fresh', e => {
     const key = e.detail;

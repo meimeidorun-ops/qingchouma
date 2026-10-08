@@ -444,9 +444,9 @@ function twCrossedSession(savedAt) {
   Backend.quotePeek = stocks => { const c = BK.read(qKey(stocks)); return c ? c.d : null; };
   // 首頁用：快取夠新就用；否則一定去抓，抓不到要「丟錯」讓畫面知道（不能默默回傳昨天的舊報價——
   // 2026-09-30 中午就是這樣：兩個來源都失敗，swr 悄悄回了前一天存的報價，看起來像停在昨收）。
-  Backend.quoteFresh = stocks => {
+  Backend.quoteFresh = (stocks, force) => {  // force：不看暫存，一定重抓（首頁每次打開／切回／盤中 20 秒）
     const k = qKey(stocks), c = BK.read(k);
-    if (c && Date.now() - c.t < qTtl() && !twCrossedSession(c.t)) return Promise.resolve(c.d);
+    if (!force && c && Date.now() - c.t < qTtl() && !twCrossedSession(c.t)) return Promise.resolve(c.d);
     return raw.quote(stocks).then(d => { BK.write(k, d); return d; });
   };
   Backend.closeAll = ids => swr('ca_' + bkHash(ids.join(',')), 30 * 60e3, 2000, () => raw.closeAll(ids));
