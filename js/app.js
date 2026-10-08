@@ -522,6 +522,7 @@ function applyWatchlistSort(list) {
 function openScoreDetail(id) {
   const it = scoreMap.get(id);
   if (!it) return;
+  if (it.v2) return openScoreDetailV2(id, it);
   const P = it.parts || {};
   const row = (label, v, note) => `
     <div class="sd-row"><span class="sd-label">${label}</span>
@@ -538,6 +539,31 @@ function openScoreDetail(id) {
     ${row('估值', P.val, val)}${row('法人', P.inst, inst)}${row('融資', P.margin, mg)}${row('營收', P.rev, rev)}${row('趨勢', P.trend, trend)}
     <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
     <div class="dim" style="margin-top:8px">規則計算，僅供參考。5 項各 25 分，換算成 100 分；缺資料的項目不計，少於 3 項不給總分。</div>
+    <button class="modal-btn" id="sd-open" style="text-align:center;margin-top:12px">打開個股頁 ›</button>
+    <button class="modal-btn" id="sd-close" style="text-align:center">關閉</button>`);
+  $('#sd-close').addEventListener('click', closeModal);
+  $('#sd-open').addEventListener('click', () => { closeModal(); openStock({ stock_id: id, stock_name: it.name }); });
+}
+
+// 評分 v2（2026-10-08）：4 項都是「在你的自選清單裡排第幾（百分位，100＝最好）」，分數＝4 項平均
+function openScoreDetailV2(id, it) {
+  const P = it.v2.parts || {}, X = it.v2.raw || {};
+  const pct = v => (v == null ? '—' : `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`);
+  const row = (label, v, note) => `
+    <div class="sd-row"><span class="sd-label">${label}</span>
+      <span class="sd-bar"><span style="width:${v == null ? 0 : v}%"></span></span>
+      <span class="sd-val">${v == null ? '—' : v}</span></div>
+    <div class="sd-note">${note}</div>`;
+  const ym = it.v2.ym ? `（到 ${it.v2.ym.replace('-', '/')}）` : '';
+  const high = X.revHigh != null ? `近 3 個月營收是近 2 年最高的 ${Math.round(X.revHigh * 100)}%${ym}` : '沒有足夠的月營收資料';
+  const turn = X.turn != null ? `近 3 月營收年增 ${pct(X.yoyPrev)} → ${pct(X.yoy3)}（${X.turn >= 0 ? '加速' : '放緩'} ${Math.abs(Math.round(X.turn * 100))} 個百分點）` : '沒有足夠的月營收資料';
+  const near = X.nearHigh != null ? `股價是近一年最高收盤的 ${Math.round(X.nearHigh * 100)}%` : '股價資料不足';
+  const val = X.pe != null ? `預估本益比 ${X.pe} 倍（定錨 EPS）` : (P.peRank != null ? '預估 EPS ≤ 0（虧損）' : '沒有預估 EPS');
+  showModal(`
+    <div class="modal-title">${it.name}（${id}）評分 <span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span></div>
+    <div class="sd-v2">${row('營收創新高', P.revHigh, high)}${row('營收轉折', P.turn, turn)}${row('接近一年高點', P.nearHigh, near)}${row('估值', P.peRank, val)}</div>
+    <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
+    <div class="dim" style="margin-top:8px">新版評分（全市場 2020～2026 驗證）：每項是「在你的自選清單裡排名百分位」（100＝最好），分數＝平均；缺資料的項目不算。規則計算，僅供參考。${it.scoreOld != null ? `舊版分數 ${it.scoreOld}。` : ''}</div>
     <button class="modal-btn" id="sd-open" style="text-align:center;margin-top:12px">打開個股頁 ›</button>
     <button class="modal-btn" id="sd-close" style="text-align:center">關閉</button>`);
   $('#sd-close').addEventListener('click', closeModal);

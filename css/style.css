@@ -184,6 +184,7 @@ html, body {
 .sc-sig.warn { color: #4ade80; }
 .sd-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; }
 .sd-label { width: 36px; color: var(--text-dim); }
+.sd-v2 .sd-label { width: 6.5em; white-space: nowrap; }
 .sd-bar { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
 .sd-bar span { display: block; height: 100%; background: var(--accent); }
 .sd-val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
