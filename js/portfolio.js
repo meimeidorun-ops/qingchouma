@@ -8,6 +8,7 @@ const Portfolio = {
   settings: null,
   advice: null,
   midlong: null,  // 中長線核心衛星模擬帳戶（Agent midlong_paper.py 寫回）
+  stockPlan: null,  // 永豐換股單（Agent sinopac_stock.py 寫入；本人在這裡確認才會送單）
   quotes: {},
   eps: {},
   view: 'open',
@@ -31,13 +32,14 @@ const Portfolio = {
     this.settings = json.data.settings;
     this.advice = json.data.advice;
     this.midlong = json.data.midlong || null;
+    this.stockPlan = json.data.stockPlan || null;
     try { localStorage.setItem('portfolio_cache', JSON.stringify(json.data)); } catch (e) {}
   },
 
   loadCache() {
     try {
       const c = JSON.parse(localStorage.getItem('portfolio_cache') || 'null');
-      if (c) { this.lots = c.lots || []; this.settings = c.settings; this.advice = c.advice; this.midlong = c.midlong || null; return true; }
+      if (c) { this.lots = c.lots || []; this.settings = c.settings; this.advice = c.advice; this.midlong = c.midlong || null; this.stockPlan = c.stockPlan || null; return true; }
     } catch (e) {}
     return false;
   },
@@ -145,6 +147,7 @@ function renderPortfolio() {
       <div class="pf-plan-row"><span>帳戶保險絲</span><span class="pf-chip ${fuse[0]}">${fuse[1]}</span></div>
     </div>`;
 
+  renderStockPlan();
   renderMidlong();
 
   // ---- Agent 建議 ----
@@ -403,4 +406,47 @@ function renderMidlong() {
     ${pend ? `<div class="pf-card-title" style="margin-top:10px">下個交易日開盤</div><ul class="pf-list">${pend}</ul>` : ''}
     <p class="hint">規則：核心 0050 70%＋衛星＝新版評分前 10 名各一份（30%）；每季（1/4/7/10 月 15 日後）換股，核心偏離 70% 超過 10 個百分點調回；收盤後決定、隔天開盤價成交。系統模擬，未實際下單。</p>
   </div>`;
+}
+
+// 永豐換股單（2026-10-09）：電腦收盤後算好；本人在這裡按「確認送出」，電腦 2～3 分鐘內才會送單（依 API 同意書第四條，最終決定由本人做）。
+const SP_STATUS = { pending: ['warn', '待你確認'], confirmed: ['ok', '已確認，電腦 2～3 分鐘內送單'], sending: ['ok', '送單中'],
+  sent: ['ok', '已送出，13:40 對帳'], done: ['ok', '已完成對帳'], rejected: ['', '這次不送'], expired: ['', '已失效'],
+  stopped: ['bad', '緊急停止中'], none: ['', '不用調整'] };
+function renderStockPlan() {
+  const box = $('#pf-stockplan');
+  if (!box) return;
+  const p = Portfolio.stockPlan;
+  if (!p) { box.innerHTML = ''; return; }
+  const st = SP_STATUS[p.status] || ['', p.status];
+  const tw = new Date(Date.now() + 8 * 3600e3);
+  const hm = tw.getUTCHours() * 60 + tw.getUTCMinutes();
+  const late = hm > 13 * 60 + 15;
+  const orders = (p.orders || []).map(o => `<li>${o.action === 'sell' ? '賣' : '買'} ${pfEsc(o.name)} ${pfEsc(o.id)}　${numFmt(o.shares)} 股<span class="hint">（參考價 ${o.ref}，約 ${numFmt(o.shares * o.ref)} 元）</span></li>`).join('');
+  const r = p.result || {};
+  const sent = (r.sent || []).map(o => `<li>${o.action === 'sell' ? '賣' : '買'} ${pfEsc(o.name)} ${pfEsc(o.id)} ${numFmt(o.shares)} 股 @ ${o.limit}</li>`).join('');
+  box.innerHTML = `<div class="pf-card">
+    <div class="pf-card-title">永豐換股單（${p.mode === 'live' ? '真實帳戶' : '永豐模擬'}） <span class="pf-chip ${st[0]}">${st[1]}</span></div>
+    <p class="hint">${pfEsc(p.reason || '')}｜${pfEsc(p.created)} 收盤後產生｜可投入 ${numFmt(p.investable)} 元（保留現金 ${numFmt(p.reserve)}）</p>
+    ${orders ? `<ul class="pf-list">${orders}</ul>` : ''}
+    ${p.status === 'pending' && orders ? `<div class="pf-sp-btns">
+        <button class="modal-btn" id="sp-yes" ${late ? 'disabled' : ''}>確認送出</button>
+        <button class="modal-btn" id="sp-no">這次不要</button></div>
+      <p class="hint">${late ? '已過 13:15，今天來不及送（盤中零股到 13:30）；明天中午再確認。' : '按「確認送出」後，電腦會用當下報價算限價（買最多高 0.5%、賣最多低 0.5%），2～3 分鐘內送出。只限今天有效。'}</p>` : ''}
+    ${sent ? `<div class="pf-card-title" style="margin-top:8px">已送出 ${pfEsc(r.at || '')}</div><ul class="pf-list">${sent}</ul>` : ''}
+    ${(r.errors || []).length ? `<p class="hint">⚠ ${r.errors.map(pfEsc).join('<br>⚠ ')}</p>` : ''}
+    ${r.note ? `<p class="hint">${pfEsc(r.note)}</p>` : ''}
+    ${(r.reconcile || []).length ? `<p class="hint">${r.reconcile.map(pfEsc).join('<br>')}</p>` : ''}
+    <p class="hint">規則計算，非投資建議；按下確認＝你本人決定送出。</p>
+  </div>`;
+  const decide = async yes => {
+    if (yes && !confirm(`確定要送出這 ${(p.orders || []).length} 筆委託？（${p.mode === 'live' ? '真實帳戶' : '永豐模擬環境'}）`)) return;
+    try {
+      const res = await Portfolio.api({ action: 'stockConfirm', planId: p.id, decision: yes ? 'yes' : 'no' });
+      Portfolio.stockPlan = res.plan || Portfolio.stockPlan;
+      renderStockPlan();
+    } catch (e) { alert(e.message); openPortfolio(true); }
+  };
+  const y = $('#sp-yes'), n = $('#sp-no');
+  if (y) y.addEventListener('click', () => decide(true));
+  if (n) n.addEventListener('click', () => decide(false));
 }
