@@ -558,12 +558,15 @@ function openScoreDetailV2(id, it) {
   const high = X.revHigh != null ? `近 3 個月營收是近 2 年最高的 ${Math.round(X.revHigh * 100)}%${ym}` : '沒有足夠的月營收資料';
   const turn = X.turn != null ? `近 3 月營收年增 ${pct(X.yoyPrev)} → ${pct(X.yoy3)}（${X.turn >= 0 ? '加速' : '放緩'} ${Math.abs(Math.round(X.turn * 100))} 個百分點）` : '沒有足夠的月營收資料';
   const near = X.nearHigh != null ? `股價是近一年最高收盤的 ${Math.round(X.nearHigh * 100)}%` : '股價資料不足';
-  const val = X.pe != null ? `預估本益比 ${X.pe} 倍（定錨 EPS）` : (P.peRank != null ? '預估 EPS ≤ 0（虧損）' : '沒有預估 EPS');
+  const fwd = X.peFwd != null ? `；定錨預估 ${X.peFwd} 倍（參考）` : '';
+  const val = X.basis === 'fullmarket'
+    ? (X.pe != null ? `本益比 ${X.pe} 倍（近四季實際 EPS）${fwd}` : (P.peRank != null ? `近四季虧損${fwd}` : `沒有本益比資料${fwd}`))
+    : (X.pe != null ? `預估本益比 ${X.pe} 倍（定錨 EPS）` : (P.peRank != null ? '預估 EPS ≤ 0（虧損）' : '沒有預估 EPS'));
   showModal(`
     <div class="modal-title">${it.name}（${id}）評分 <span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span></div>
     <div class="sd-v2">${row('營收創新高', P.revHigh, high)}${row('營收轉折', P.turn, turn)}${row('接近一年高點', P.nearHigh, near)}${row('估值', P.peRank, val)}</div>
     <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
-    <div class="dim" style="margin-top:8px">新版評分（全市場 2020～2026 驗證）：每項是「在你的自選清單裡排名百分位」（100＝最好），分數＝平均；缺資料的項目不算。規則計算，僅供參考。${it.scoreOld != null ? `舊版分數 ${it.scoreOld}。` : ''}</div>
+    <div class="dim" style="margin-top:8px">新版評分（全市場 2020～2026 驗證）：每項是${X.basis === 'fullmarket' ? `在全市場（成交金額前 ${X.popN || 350} 大普通股）的排名百分位` : '在你的自選清單裡排名百分位'}（100＝最好），分數＝平均；缺資料的項目不算。規則計算，僅供參考。${it.scoreOld != null ? `舊版分數 ${it.scoreOld}。` : ''}</div>
     <button class="modal-btn" id="sd-open" style="text-align:center;margin-top:12px">打開個股頁 ›</button>
     <button class="modal-btn" id="sd-close" style="text-align:center">關閉</button>`);
   $('#sd-close').addEventListener('click', closeModal);
