@@ -351,7 +351,7 @@ async function paintDetailScore(stock) {
   box.hidden = true;
   let it = scoreMap.get(stock.stock_id);
   if (!it) {
-    try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, x])); } catch (e) { return; }
+    try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) { return; }
     it = scoreMap.get(stock.stock_id);
   }
   if (!it || currentStock !== stock) return;
@@ -471,6 +471,17 @@ async function renderWatchlist() {
 // ---- 自選股評分（Apps Script action=scores）----
 // 分數徽章：≥70 綠、50～69 黃、<50 灰；名稱下方顯示最重要的一個訊號；可切換「依評分排序」。點分數看細項。
 let scoreMap = new Map();
+// 評分版本（2026-10-09）：積極（預設，4 項）／穩健（再加低波動，崩跌率約減半但上漲也少）。每台裝置各自記住。
+let scoreMode = localStorage.getItem('score_mode') || 'aggr';
+function scoreModeItem(it) {
+  const s = it && it.v2 && it.v2.raw && it.v2.raw.scoreSafe;
+  if (scoreMode !== 'safe' || s == null) return it;
+  return Object.assign({}, it, { score: s, scoreAggr: it.score, safeMode: true });
+}
+function paintScoreModeBtn() {
+  const b = $('#wl-score-mode');
+  if (b) b.textContent = scoreMode === 'safe' ? '評分：穩健' : '評分：積極';
+}
 let wlRendered = [];  // 目前清單分頁的股票（原始順序）
 // 預設依分數高→低（2026-10-03 改；鍵名換 wl_sort2，讓之前存成「自訂」的裝置也切到分數）
 let wlSortMode = localStorage.getItem('wl_sort2') || 'score';
@@ -485,7 +496,7 @@ function scoreClass(s) { return s == null ? 'sc-na' : s >= 70 ? 'sc-hi' : s >= 5
 
 async function paintScores(list) {
   const apply = data => {
-    scoreMap = new Map((data && data.items || []).map(it => [it.id, it]));
+    scoreMap = new Map((data && data.items || []).map(it => [it.id, scoreModeItem(it)]));
     for (const s of list) {
       const it = scoreMap.get(s.stock_id);
       const b = $(`#wl-sc-${s.stock_id}`), g = $(`#wl-sig-${s.stock_id}`);
@@ -558,13 +569,15 @@ function openScoreDetailV2(id, it) {
   const high = X.revHigh != null ? `近 3 個月營收是近 2 年最高的 ${Math.round(X.revHigh * 100)}%${ym}` : '沒有足夠的月營收資料';
   const turn = X.turn != null ? `近 3 月營收年增 ${pct(X.yoyPrev)} → ${pct(X.yoy3)}（${X.turn >= 0 ? '加速' : '放緩'} ${Math.abs(Math.round(X.turn * 100))} 個百分點）` : '沒有足夠的月營收資料';
   const near = X.nearHigh != null ? `股價是近一年最高收盤的 ${Math.round(X.nearHigh * 100)}%` : '股價資料不足';
+  const vol = X.vol60 != null ? `近 60 日每天平均波動 ${(X.vol60 * 100).toFixed(1)}%（越小越穩）` : '股價資料不足';
   const fwd = X.peFwd != null ? `；定錨預估 ${X.peFwd} 倍（參考）` : '';
   const val = X.basis === 'fullmarket'
     ? (X.pe != null ? `本益比 ${X.pe} 倍（近四季實際 EPS）${fwd}` : (P.peRank != null ? `近四季虧損${fwd}` : `沒有本益比資料${fwd}`))
     : (X.pe != null ? `預估本益比 ${X.pe} 倍（定錨 EPS）` : (P.peRank != null ? '預估 EPS ≤ 0（虧損）' : '沒有預估 EPS'));
   showModal(`
     <div class="modal-title">${it.name}（${id}）評分 <span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span></div>
-    <div class="sd-v2">${row('營收創新高', P.revHigh, high)}${row('營收轉折', P.turn, turn)}${row('接近一年高點', P.nearHigh, near)}${row('估值', P.peRank, val)}</div>
+    <div class="sd-v2">${row('營收創新高', P.revHigh, high)}${row('營收轉折', P.turn, turn)}${row('接近一年高點', P.nearHigh, near)}${row('估值', P.peRank, val)}${it.safeMode ? row('低波動', P.lowVol, vol) : ''}</div>
+    <div class="dim" style="margin-top:6px">${it.safeMode ? `穩健版（5 項，含低波動）；積極版分數 ${it.scoreAggr ?? '—'}。` : `積極版（4 項）${X.scoreSafe != null ? `；穩健版分數 ${X.scoreSafe}` : ''}。`}清單上方「評分：積極／穩健」可以切換。</div>
     <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
     <div class="dim" style="margin-top:8px">新版評分（全市場 2020～2026 驗證）：每項是${X.basis === 'fullmarket' ? `在全市場（成交金額前 ${X.popN || 350} 大普通股）的排名百分位` : '在你的自選清單裡排名百分位'}（100＝最好），分數＝平均；缺資料的項目不算。規則計算，僅供參考。${it.scoreOld != null ? `舊版分數 ${it.scoreOld}。` : ''}</div>
     <button class="modal-btn" id="sd-open" style="text-align:center;margin-top:12px">打開個股頁 ›</button>
@@ -909,6 +922,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('#btn-group-menu').addEventListener('click', openGroupMenu);
   $('#wl-updated').addEventListener('click', openQuoteLog);
+  paintScoreModeBtn();
+  $('#wl-score-mode').addEventListener('click', () => {
+    scoreMode = scoreMode === 'safe' ? 'aggr' : 'safe';
+    try { localStorage.setItem('score_mode', scoreMode); } catch (e) {}
+    paintScoreModeBtn();
+    paintScores(wlRendered);
+  });
   $('#wl-sort').addEventListener('click', () => {
     wlSortMode = wlSortMode === 'score' ? 'custom' : 'score';
     try { localStorage.setItem('wl_sort2', wlSortMode); } catch (e) {}
