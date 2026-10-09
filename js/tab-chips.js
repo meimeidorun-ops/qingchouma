@@ -223,7 +223,7 @@ async function loadWarrantBranch() {
         <table class="data-table compact branch-table">
           <thead><tr><th>分點</th><th>認購淨額</th><th>買/賣天</th><th>認售</th></tr></thead>
           <tbody>${list.map(r => `<tr>
-            <td><span class="br-link wb-link" data-n="${r.n}">${r.n}</span>${r.hq ? ' <span class="dim">總公司</span>' : ''}</td>
+            <td><span class="br-link wb-link" data-n="${r.n}">${r.n}</span>${r.hq ? ' <span class="dim">總公司</span>' : ''}${typeof branchTypeTag === 'function' ? branchTypeTag(r) : ''}</td>
             <td class="barcell ${dir}"><div class="bar ${dir}" style="width:${Math.round(Math.abs(r.call) / max * 100)}%"></div><span>${wan(r.call)}</span></td>
             <td>${r.buyD}/${r.sellD}</td>
             <td>${r.put ? wan(r.put) : '—'}</td>
