@@ -2,7 +2,7 @@
 // 資料：wb/radar.json（權證超跌反彈/export_app.py 每天全市場掃描後產生，約 20:10 更新）。
 // 每列＝「股票 × 分點」，依期間內認購權證淨買超金額排序；點一列 → 打開個股頁的「分點 › 權證分點」。
 const Radar = { n: Number(localStorage.getItem('rd_n') || 5), steadyOnly: localStorage.getItem('rd_steady') === '1',
-  noHq: localStorage.getItem('rd_nohq') === '1', noFlip: localStorage.getItem('rd_noflip') === '1', data: null, at: 0 };
+  noHq: localStorage.getItem('rd_nohq') === '1', noFlip: localStorage.getItem('rd_noflip') === '1', turnOnly: localStorage.getItem('rd_turn') === '1', data: null, at: 0 };
 
 // 分點類型標籤（權證超跌反彈/branch_profile.py：大買後 2 天內倒貨率 ≥60% 隔日沖、≤30% 波段）
 function branchTypeTag(r) {
@@ -20,6 +20,12 @@ function branchTypeTag(r) {
   b.id = 'rd-noflip';
   b.textContent = '排除隔日沖';
   ref.after(b);
+  // 「🔻 轉賣出」：先前有買、最新掃描日變成淨賣出的分點（radar.json 的 turn）
+  const t = document.createElement('button');
+  t.className = 'range-btn';
+  t.id = 'rd-turn';
+  t.textContent = '🔻 轉賣出';
+  b.after(t);
 })();
 
 async function radarFetch() {
@@ -41,6 +47,33 @@ function paintRadarBars() {
   $('#rd-steady').classList.toggle('active', Radar.steadyOnly);
   $('#rd-nohq').classList.toggle('active', Radar.noHq);
   $('#rd-noflip').classList.toggle('active', Radar.noFlip);
+  $('#rd-turn').classList.toggle('active', Radar.turnOnly);
+}
+
+// 轉賣出清單：每列＝「股票 × 分點」，依這波淨賣出金額排序
+function paintRadarTurn(d, box, sum, watched) {
+  let rows = d.turn || [];
+  if (Radar.noHq) rows = rows.filter(r => !r.hq);
+  if (Radar.noFlip) rows = rows.filter(r => r.t !== '隔日沖');
+  rows = rows.slice().sort((a, b) => (watched.has(b.id) ? 1 : 0) - (watched.has(a.id) ? 1 : 0) || b.sold - a.sold);
+  sum.innerHTML = `資料日 <b>${d.days[0]}</b>｜先前有買、最新一天轉為淨賣出｜★ 自選排前面${d.days.length < 5 ? `｜資料庫只有 ${d.days.length} 天，先前買的金額可能低估` : ''}`;
+  if (!rows.length) { box.innerHTML = '<div class="empty-hint">最新一天沒有「先前買、現在賣」的分點</div>'; return; }
+  box.innerHTML = rows.slice(0, 80).map((r, i) => `<div class="rd-row" data-i="${i}" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <b>${r.name || r.id}</b><span class="dim">${r.id}${watched.has(r.id) ? ' ★' : ''}</span>
+        <span style="flex:1"></span><b class="down">-${numFmt(Math.round(r.sold / 1e4))} 萬</b>
+      </div>
+      <div style="display:flex;gap:8px;font-size:13px;margin-top:3px;flex-wrap:wrap">
+        <span>${r.b}${r.hq ? ' <span class="dim">（總公司）</span>' : ''}${branchTypeTag(r)}</span>
+        <span class="dim">先前買 +${numFmt(Math.round(r.prev / 1e4))} 萬（${r.bd} 天）</span>
+        <span class="down">${r.pct > 1 ? '賣超過先前買的量' : `已賣約 ${Math.round(r.pct * 100)}%`}${r.sdn > 1 ? `｜連賣 ${r.sdn} 天` : ''}</span>
+      </div>
+      <div class="dim" style="font-size:12px;margin-top:2px">${(r.w || []).join('、')}</div>
+    </div>`).join('') + '<div class="branch-note">這裡列的是：前幾個掃描日累積淨買認購權證 ≥30 萬的分點，最新一天變成淨賣出（連續賣幾天就合起來算）。「賣超過先前買的量」通常是它更早以前就買了（資料庫還沒那麼久）。只涵蓋當天成交 ≥30 萬的權證。</div>';
+  box.querySelectorAll('.rd-row').forEach(el => el.addEventListener('click', () => {
+    const r = rows[Number(el.dataset.i)];
+    radarOpenStock(r.id, r.name);
+  }));
 }
 
 async function openRadar() {
@@ -57,6 +90,9 @@ async function openRadar() {
     if (Radar.noFlip) rows = rows.filter(r => r.t !== '隔日沖');
     if (Radar.steadyOnly) rows = rows.filter(r => radarSteady(r, eff));
     const watched = new Set(getWatchlist().map(s => s.stock_id));
+    if (Radar.turnOnly) { paintRadarTurn(d, box, sum, watched); return; }
+    const turned = {};
+    (d.turn || []).forEach(r => { turned[r.id + '|' + r.b] = r; });
     const short = d.days.length < Radar.n ? `｜資料庫目前只有 ${d.days.length} 天` : '';
     sum.innerHTML = `資料日 <b>${d.days[0]}</b>（近 ${eff} 個掃描日${short}）｜更新 ${d.updated.slice(5)}｜★ 在自選清單`;
     if (!rows.length) {
@@ -73,7 +109,8 @@ async function openRadar() {
         <div style="display:flex;gap:8px;font-size:13px;margin-top:3px;flex-wrap:wrap">
           <span>${r.b}${r.hq ? ' <span class="dim">（總公司）</span>' : ''}${branchTypeTag(r)}</span>
           <span class="dim">買 ${r.bd} 天／賣 ${r.sd} 天｜收 ${r.nw} 支</span>
-          ${steady ? '<span class="up">🔁 持續買進</span>' : ''}
+          ${steady && !turned[r.id + '|' + r.b] ? '<span class="up">🔁 持續買進</span>' : ''}
+          ${turned[r.id + '|' + r.b] ? `<span class="down">🔻 最新一天轉賣 ${numFmt(Math.round(turned[r.id + '|' + r.b].sold / 1e4))} 萬</span>` : ''}
           ${r.put > 0 ? `<span class="down">另買認售 ${numFmt(Math.round(r.put / 1e4))} 萬</span>` : ''}
         </div>
         <div class="dim" style="font-size:12px;margin-top:2px">${(r.w || []).join('、')}</div>
@@ -127,6 +164,11 @@ $('#rd-steady').addEventListener('click', () => {
 $('#rd-noflip').addEventListener('click', () => {
   Radar.noFlip = !Radar.noFlip;
   localStorage.setItem('rd_noflip', Radar.noFlip ? '1' : '0');
+  openRadar();
+});
+$('#rd-turn').addEventListener('click', () => {
+  Radar.turnOnly = !Radar.turnOnly;
+  localStorage.setItem('rd_turn', Radar.turnOnly ? '1' : '0');
   openRadar();
 });
 $('#rd-nohq').addEventListener('click', () => {
