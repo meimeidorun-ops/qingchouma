@@ -329,14 +329,16 @@ async function openStock(stock) {
   let klineTick = 0;
   rtTimer = setInterval(() => {
     if (document.hidden) return;
-    // K 線頁：盤中每 60 秒自動更新（日K 最後一根、5分/60分）
-    if ($('#pane-kline').classList.contains('active')) {
-      if (twMarketOpen() && ++klineTick % 4 === 0) loadKline(true);
+    const open = twMarketOpen();
+    if ($('#pane-rt').classList.contains('active')) {
+      if (!open && Date.now() - rtLastLoad < 120e3) return;
+      loadRealtime(true);
       return;
     }
-    if (!$('#pane-rt').classList.contains('active')) return;
-    if (!twMarketOpen() && Date.now() - rtLastLoad < 120e3) return;
-    loadRealtime(true);
+    // 2026-10-13：不管停在哪個頁籤（法人、資券、分點…），盤中右上角股價都每 15 秒更新
+    if (open) refreshHeaderQuote();
+    // K 線頁：盤中每 60 秒自動更新（日K 最後一根、5分/60分）
+    if ($('#pane-kline').classList.contains('active') && open && ++klineTick % 4 === 0) loadKline(true);
   }, 15000);
 
   paintDetailScore(stock);
@@ -345,16 +347,27 @@ async function openStock(stock) {
   prefetchStock(stock);
 }
 
-// 個股頁標題下方：評分＋訊號（只有自選股有分數；點一下看細項）
+// 個股頁右上角股價：只抓這一檔的即時報價（不重畫走勢圖）
+async function refreshHeaderQuote() {
+  const stock = currentStock;
+  if (!stock) return;
+  try {
+    const q = (await Backend.quoteFresh([stock], true))[stock.stock_id];
+    if (stock === currentStock && q && q.price != null) applyHeaderQuote(q.price, q.change, q.changePercent);
+  } catch (e) {}
+}
+
+// 個股頁標題下方：評分＋訊號（自選股用後端評分；其他股票用全市場評分 mk/scores.json；點一下看細項）
 async function paintDetailScore(stock) {
   const box = $('#dt-score');
   box.hidden = true;
   let it = scoreMap.get(stock.stock_id);
   if (!it) {
-    try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) { return; }
+    try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) {}
     it = scoreMap.get(stock.stock_id);
   }
-  if (!it || currentStock !== stock) return;
+  if (!it) { if (currentStock === stock && typeof mkPaintDetailScore === 'function') mkPaintDetailScore(stock); return; }
+  if (currentStock !== stock) return;
   const sigs = (it.signals || []).slice().sort((a, b) => (b.level === 'warn') - (a.level === 'warn'));
   box.innerHTML = `<span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span><span class="dt-score-lbl">評分</span>` +
     sigs.map(s => `<span class="sc-sig ${s.level}">${sigShort(s)}</span>`).join('') + '<span class="dt-score-more">細項 ›</span>';
@@ -907,7 +920,8 @@ document.addEventListener('DOMContentLoaded', () => {
     lastResume = Date.now();
     if (homeActive()) refreshWatchlistQuotes();
     else if (currentStock && $('#screen-detail').classList.contains('active') && $('#pane-rt').classList.contains('active')) loadRealtime(true);
-    else if (currentStock && $('#screen-detail').classList.contains('active') && $('#pane-kline').classList.contains('active')) loadKline(true);
+    else if (currentStock && $('#screen-detail').classList.contains('active') && $('#pane-kline').classList.contains('active')) { refreshHeaderQuote(); loadKline(true); }
+    else if (currentStock && $('#screen-detail').classList.contains('active')) refreshHeaderQuote();
   };
   document.addEventListener('visibilitychange', onResume);
   window.addEventListener('pageshow', onResume);

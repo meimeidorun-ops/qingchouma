@@ -22,6 +22,7 @@
     <div class="topbar">
       <div class="title">輕籌碼</div>
       <div class="spacer"></div>
+      <button class="icon-btn" id="btn-rank" aria-label="全市場排行">📊</button>
       <button class="icon-btn" id="btn-radar" aria-label="權證分點雷達">🎯</button>
       <button class="icon-btn" id="btn-portfolio" aria-label="操作計畫">💼</button>
       <button class="icon-btn" id="btn-settings">⚙</button>
@@ -31,6 +32,7 @@
     </div>
     <div class="search-results" id="search-results"></div>
 
+    <div class="idx-bar" id="idx-bar" hidden></div>
     <div class="group-bar">
       <div class="group-tabs" id="group-tabs"></div>
       <button class="icon-btn" id="btn-group-menu" aria-label="管理清單">⋯</button>
@@ -306,6 +308,21 @@
     </div>
   </section>
 
+  <!-- ================= 全市場排行 ================= -->
+  <section id="screen-rank" class="screen">
+    <div class="topbar">
+      <button class="back-btn" id="btn-rk-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">全市場排行</div>
+      <div class="spacer"></div>
+    </div>
+    <div class="pf-scroll">
+      <div class="range-bar" id="rk-cat" style="flex-wrap:wrap"></div>
+      <div class="range-bar" id="rk-sub" style="flex-wrap:wrap;padding-top:0"></div>
+      <div class="branch-summary" id="rk-summary"></div>
+      <div id="rk-list"></div>
+    </div>
+  </section>
+
   <div class="modal" id="modal"><div class="modal-card" id="modal-card"></div></div>
 
   <!-- ================= SETTINGS ================= -->
@@ -354,6 +371,7 @@
 <script src="js/import.js"></script>
 <script src="js/portfolio.js"></script>
 <script src="js/radar.js"></script>
+<script src="js/market.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

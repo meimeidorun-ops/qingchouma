@@ -1,4 +1,4 @@
-const CACHE = 'qingchoumaka-v51';
+const CACHE = 'qingchoumaka-v52';
 const ASSETS = [
   './',
   'index.html',
@@ -13,6 +13,7 @@ const ASSETS = [
   'js/import.js',
   'js/portfolio.js',
   'js/radar.js',
+  'js/market.js',
   'manifest.json',
 ];
 
