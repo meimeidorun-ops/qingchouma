@@ -352,7 +352,7 @@ async function fetchJsonRetry(path) {
   let err;
   for (let k = 0; k < 2; k++) {
     try {
-      const res = await fetch(`${path}?t=${Math.floor(Date.now() / 6e5)}${k ? '_' + Date.now() : '}`);
+      const res = await fetch(`${path}?t=${Math.floor(Date.now() / 6e5)}${k ? '_' + Date.now() : ''}`);
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();

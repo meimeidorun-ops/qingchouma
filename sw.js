@@ -1,19 +1,8 @@
-const CACHE = 'qingchoumaka-v53';
+const CACHE = 'qingchoumaka-v54';
 const ASSETS = [
   './',
   'index.html',
-  'css/style.css',
-  'js/api.js',
-  'js/backend.js',
-  'js/indicators.js',
-  'js/charts.js',
-  'js/app.js',
-  'js/tab-chips.js',
-  'js/tab-fundamental.js',
-  'js/import.js',
-  'js/portfolio.js',
-  'js/radar.js',
-  'js/market.js',
+  // js/css 的網址帶版本（index.html 的 APP_V），第一次開啟時由下面的 fetch 處理存進快取，這裡不用列
   'manifest.json',
 ];
 
