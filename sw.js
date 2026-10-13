@@ -1,4 +1,4 @@
-const CACHE = 'qingchoumaka-v52';
+const CACHE = 'qingchoumaka-v53';
 const ASSETS = [
   './',
   'index.html',
@@ -44,7 +44,8 @@ self.addEventListener('fetch', (e) => {
       fetch(e.request, { cache: 'no-cache' }).then(res => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
         return res;
-      }).catch(() => caches.match(e.request).then(c => c || caches.match('index.html')))
+      // 離線：用快取；只有「開頁面」才退回 index.html（資料檔 .json 不可以拿 HTML 頂替，會變成解析錯誤）
+      }).catch(() => caches.match(e.request).then(c => c || (e.request.mode === 'navigate' ? caches.match('index.html') : Response.error())))
     );
     return;
   }

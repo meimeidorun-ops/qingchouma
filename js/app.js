@@ -347,6 +347,20 @@ async function openStock(stock) {
   prefetchStock(stock);
 }
 
+// 抓本站的靜態 JSON（wb/、mk/）：失敗（網路瞬斷、部署更新中、拿到的不是 JSON）就等 1.5 秒換個網址參數再試一次。找不到檔案回 null。
+async function fetchJsonRetry(path) {
+  let err;
+  for (let k = 0; k < 2; k++) {
+    try {
+      const res = await fetch(`${path}?t=${Math.floor(Date.now() / 6e5)}${k ? '_' + Date.now() : '}`);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) { err = e; await new Promise(r => setTimeout(r, 1500)); }
+  }
+  throw new Error(/JSON|token/i.test(err.message) ? '資料檔更新中，請稍後再試' : err.message === 'Failed to fetch' ? '網路連線不穩' : err.message);
+}
+
 // 個股頁右上角股價：只抓這一檔的即時報價（不重畫走勢圖）
 async function refreshHeaderQuote() {
   const stock = currentStock;

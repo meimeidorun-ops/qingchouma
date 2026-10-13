@@ -175,10 +175,9 @@ const wbCache = {};
 async function fetchWarrantBranch(id) {
   const key = `${id}_${Math.floor(Date.now() / 6e5)}`;  // 10 分鐘內同一份
   if (wbCache[key]) return wbCache[key];
-  const res = await fetch(`wb/${encodeURIComponent(id)}.json?t=${Math.floor(Date.now() / 6e5)}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (wbCache[key] = await res.json());
+  const d = await fetchJsonRetry(`wb/${encodeURIComponent(id)}.json`);
+  if (d) wbCache[key] = d;
+  return d;
 }
 
 const wan = v => `${v > 0 ? '+' : ''}${numFmt(Math.round(v / 1e4))}`;

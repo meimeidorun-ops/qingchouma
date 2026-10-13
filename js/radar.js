@@ -30,9 +30,9 @@ function branchTypeTag(r) {
 
 async function radarFetch() {
   if (Radar.data && Date.now() - Radar.at < 6e5) return Radar.data;
-  const res = await fetch(`wb/radar.json?t=${Math.floor(Date.now() / 6e5)}`);
-  if (!res.ok) throw new Error(res.status === 404 ? '還沒有雷達資料（等今晚全市場掃描跑完）' : `HTTP ${res.status}`);
-  Radar.data = await res.json();
+  const d = await fetchJsonRetry('wb/radar.json');
+  if (!d) throw new Error('還沒有雷達資料（等今晚全市場掃描跑完）');
+  Radar.data = d;
   Radar.at = Date.now();
   return Radar.data;
 }
