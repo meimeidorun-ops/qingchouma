@@ -501,6 +501,9 @@ let scoreMap = new Map();
 // 評分版本（2026-10-09）：積極（預設，4 項）／穩健（再加低波動，崩跌率約減半但上漲也少）。每台裝置各自記住。
 let scoreMode = localStorage.getItem('score_mode') || 'aggr';
 function scoreModeItem(it) {
+  // 「營收大增」改嚴（2026-10-13）：後端只看單月年增 ≥30%；Agent 另外算 revBig（再加近 3 月合計年增 ≥20%、當月是近 12 個月前三高），
+  // 不符合就把這個標籤拿掉（基期低造成的單月年增不算）。
+  if (it && it.signals && it.v2 && it.v2.raw && it.v2.raw.revBig === false) it = Object.assign({}, it, { signals: it.signals.filter(x => !/^rev/.test(x.key)) });
   const s = it && it.v2 && it.v2.raw && it.v2.raw.scoreSafe;
   if (scoreMode !== 'safe' || s == null) return it;
   return Object.assign({}, it, { score: s, scoreAggr: it.score, safeMode: true });
@@ -595,6 +598,8 @@ function openScoreDetailV2(id, it) {
   const ym = it.v2.ym ? `（到 ${it.v2.ym.replace('-', '/')}）` : '';
   const high = X.revHigh != null ? `近 3 個月營收是近 2 年最高的 ${Math.round(X.revHigh * 100)}%${ym}` : '沒有足夠的月營收資料';
   const turn = X.turn != null ? `近 3 月營收年增 ${pct(X.yoyPrev)} → ${pct(X.yoy3)}（${X.turn >= 0 ? '加速' : '放緩'} ${Math.abs(Math.round(X.turn * 100))} 個百分點）` : '沒有足夠的月營收資料';
+  const revNote = X.yoy1 == null ? '' : `<div class="sd-note">最新單月營收年增 ${pct(X.yoy1)}，是近 12 個月第 ${X.revRank12} 高。${X.revBig ? '符合「營收大增」。'
+    : X.yoy1 >= 0.3 ? '單月年增雖高，但沒同時符合「近 3 月合計年增 ≥20%、當月是近 12 個月前三高」（多半是去年基期低），不標「營收大增」。' : ''}</div>`;
   const near = X.nearHigh != null ? `股價是近一年最高收盤的 ${Math.round(X.nearHigh * 100)}%` : '股價資料不足';
   const vol = X.vol60 != null ? `近 60 日每天平均波動 ${(X.vol60 * 100).toFixed(1)}%（越小越穩）` : '股價資料不足';
   const fwd = X.peFwd != null ? `；定錨預估 ${X.peFwd} 倍（參考）` : '';
@@ -603,7 +608,7 @@ function openScoreDetailV2(id, it) {
     : (X.pe != null ? `預估本益比 ${X.pe} 倍（定錨 EPS）` : (P.peRank != null ? '預估 EPS ≤ 0（虧損）' : '沒有預估 EPS'));
   showModal(`
     <div class="modal-title">${it.name}（${id}）評分 <span class="sc-badge has ${scoreClass(it.score)}">${it.score ?? '—'}</span></div>
-    <div class="sd-v2">${row('營收創新高', P.revHigh, high)}${row('營收轉折', P.turn, turn)}${row('接近一年高點', P.nearHigh, near)}${row('估值', P.peRank, val)}${it.safeMode ? row('低波動', P.lowVol, vol) : ''}</div>
+    <div class="sd-v2">${row('營收創新高', P.revHigh, high)}${row('營收轉折', P.turn, turn)}${revNote}${row('接近一年高點', P.nearHigh, near)}${row('估值', P.peRank, val)}${it.safeMode ? row('低波動', P.lowVol, vol) : ''}</div>
     <div class="dim" style="margin-top:6px">${it.safeMode ? `穩健版（5 項，含低波動）；積極版分數 ${it.scoreAggr ?? '—'}。` : `積極版（4 項）${X.scoreSafe != null ? `；穩健版分數 ${X.scoreSafe}` : ''}。`}清單上方「評分：積極／穩健」可以切換。</div>
     <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
     <div class="dim" style="margin-top:8px">新版評分（全市場 2020～2026 驗證）：每項是${X.basis === 'fullmarket' ? `在全市場（成交金額前 ${X.popN || 350} 大普通股）的排名百分位` : '在你的自選清單裡排名百分位'}（100＝最好），分數＝平均；缺資料的項目不算。規則計算，僅供參考。${it.scoreOld != null ? `舊版分數 ${it.scoreOld}。` : ''}</div>
