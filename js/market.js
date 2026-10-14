@@ -20,7 +20,7 @@ const Mk = {
   },
   async dayMap() {
     const d = await Mk.load('day');
-    if (!d._map) d._map = new Map(d.rows.map(r => [r[0], { id: r[0], name: r[1], close: r[2], pct: r[3], vol: r[4], money: r[5], pct5: r[6], pct20: r[7] }]));
+    if (!d._map) d._map = new Map(d.rows.map(r => [r[0], { id: r[0], name: r[1], close: r[2], pct: r[3], vol: r[4], money: r[5], pct5: r[6], pct20: r[7], mkt: r[8] }]));
     return d._map;
   },
   // 盤中即時：成交值前 700 檔（＋自選）直接問鉅亨，一次 50 檔平行抓，約 0.5 秒。20 秒內重複用。
@@ -87,15 +87,17 @@ const mkEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&
   };
 })();
 
-// 搜尋：FinMind 股票清單抓不到（沒授權碼／額度用完）時，改用全市場行情檔的代號＋名稱
-(async () => {
-  try {
-    const map = await Mk.dayMap();
-    if (!stockIndexReady || !stockIndex.length) {
-      stockIndex = [...map.values()].map(r => ({ stock_id: r.id, stock_name: r.name }));
-      stockIndexReady = true;
+// 搜尋：FinMind 股票清單抓不到（沒授權碼／額度用完）時，才改用全市場行情檔的代號＋名稱＋上市/上櫃。
+// 2026-10-14 修：v52 曾在一開啟就直接用行情檔蓋掉 stockIndex（沒有上市/上櫃欄位）→ marketFor() 把上櫃股都當上市，
+// 備援報價查錯市場、新加入的上櫃股也被記成上市。現在只在 FinMind 失敗時備援，而且帶 type。
+(() => {
+  const fm = Api.stockList.bind(Api);
+  Api.stockList = async () => {
+    try { return await fm(); } catch (e) {
+      const map = await Mk.dayMap();
+      return [...map.values()].map(r => ({ stock_id: r.id, stock_name: r.name, type: r.mkt === 'TWO' ? 'tpex' : 'twse' }));
     }
-  } catch (e) {}
+  };
 })();
 
 // ---------------------------------------------------------------- 個股：不在自選清單也有評分（全市場成交金額前 350 大）

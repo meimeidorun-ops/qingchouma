@@ -727,10 +727,27 @@ async function paintWatchlistQuotes(list, quotes, cachedOnly) {
     missing.push(s.stock_id);
   }
   if (!missing.length || cachedOnly) return;
+  // 2026-10-14：補收盤價（Apps Script，曾慢到 46 秒）改成背景做，不再卡住清單的「更新中」→ 其他股票照常每 20 秒更新。
+  // 興櫃股問了也沒有收盤價：今天問過沒資料的代號記下來，今天不再問。
+  const noKey = 'noclose_' + twToday();
+  let noClose = [];
+  try { noClose = JSON.parse(localStorage.getItem(noKey) || '[]'); } catch (e) {}
+  const ask = missing.filter(id => !noClose.includes(id));
+  for (const id of missing.filter(id => noClose.includes(id))) { const el = $(`#wl-quote-${id}`); if (el) el.innerHTML = `<div class="wl-change flat">無資料</div>`; }
+  if (ask.length) fillCloses(ask, noKey, noClose);
+}
+
+async function fillCloses(missing, noKey, noClose) {
   // Live quote unavailable (night/weekend/MIS hiccup): ONE request for all official closes
   // (TWSE + TPEx OpenAPI via Apps Script) instead of one FinMind call per stock.
-  let closes = {};
-  try { closes = await Backend.closeAll(missing); } catch (e) { console.warn('closeAll failed', e); }
+  let closes = {}, ok = false;
+  try { closes = await Backend.closeAll(missing); ok = true; } catch (e) { console.warn('closeAll failed', e); }
+  if (ok) {
+    try {
+      Object.keys(localStorage).filter(k => k.startsWith('noclose_') && k !== noKey).forEach(k => localStorage.removeItem(k));
+      localStorage.setItem(noKey, JSON.stringify([...new Set(noClose.concat(missing.filter(id => !closes[id] || closes[id].close == null)))]));
+    } catch (e) {}
+  }
   // 全部都走收盤價備援時，標示收盤資料的日期（民國 1150929 / 西元 20260929 都處理）
   const lbl = $('#wl-updated');
   const dates = Object.values(closes).map(c => String(c.date || '')).filter(Boolean).sort();

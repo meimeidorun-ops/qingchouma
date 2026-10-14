@@ -112,13 +112,20 @@ async function cnyesDaily(stock, days) {
 }
 
 // Apps Script 偶爾（尤其同時多個請求時）回一頁 404 HTML，重試一次通常就好。
+// 2026-10-14：加 25 秒上限（closeAll 曾一次 46 秒以上，沒有上限時會把清單的「更新中」整個卡住）。
 async function gasGet(qs) {
   for (let i = 0; ; i++) {
+    const ctl = new AbortController();
+    // 評分（首次約 40 秒）、大戶（約 15 秒）、操作計畫本來就慢，給 90 秒；其他 25 秒
+    const timer = setTimeout(() => ctl.abort(), /action=(scores|holders|portfolio)\b/.test(qs) ? 90000 : 25000);
     try {
-      return await (await fetch(`${backendUrl()}?${qs}`)).json();
+      return await (await fetch(`${backendUrl()}?${qs}`, { signal: ctl.signal })).json();
     } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Apps Script 逾時');
       if (i >= 1) throw e;
       await new Promise(r => setTimeout(r, 800));
+    } finally {
+      clearTimeout(timer);
     }
   }
 }
