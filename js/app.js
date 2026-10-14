@@ -130,7 +130,15 @@ function refreshStar() {
   $('#btn-star').classList.toggle('active', watched);
 }
 
+// 2026-10-14：非同步載入的「號碼牌」。快速換股票／換期間／換頁時，晚回來的舊請求不可以蓋掉新的畫面
+// （原本法人頁沒防護，會出現上一檔的法人；K 線換週期時舊的日K 可能蓋掉 60 分）。
+const tabSeq = {};
+function tabTicket(k) { return (tabSeq[k] = (tabSeq[k] || 0) + 1); }
+function tabLive(k, t, stock) { return tabSeq[k] === t && (stock === undefined || stock === currentStock); }
+let modalSeq = 0;  // 每開一次彈窗 +1；彈窗內容晚回來時比對，避免蓋掉後來開的彈窗
+
 function showModal(html) {
+  modalSeq++;
   $('#modal-card').innerHTML = html;
   $('#modal').classList.add('active');
 }
@@ -228,7 +236,8 @@ function toastWarn(e) {
 // 改成「後端為準」：只有這台自己新增、還沒送成功的（pending add）才會推上去；這台刪除還沒送成功的（pending remove）會重送刪除。
 // 清掉本機的擁有者資料（清單、分頁、待同步、後端快取）
 function wipeOwnerLocal() {
-  ['watchlist', 'groups', 'active_group', 'wl_pending_add', 'wl_pending_remove'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  // 2026-10-14：持股暫存（portfolio_cache／portfolio_quotes）也要清，不然切回訪客打開 💼 還看得到上次的持股
+  ['watchlist', 'groups', 'active_group', 'wl_pending_add', 'wl_pending_remove', 'portfolio_cache', 'portfolio_quotes'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
   ['list', 'groups', 'scores', 'portfolio'].forEach(k => BK.drop(k));
 }
 function pendRead(kind) {
@@ -543,6 +552,8 @@ async function paintScores(list) {
     applyWatchlistSort(list);
   };
   try { apply(await Backend.scores()); } catch (e) { console.warn('scores failed', e); }
+  // 後端沒有分數的（訪客、ETF 以外的非自選評分對象）用全市場評分補上（market.js）
+  if (typeof mkFillScores === 'function') mkFillScores(list);
 }
 
 function applyWatchlistSort(list) {
@@ -562,7 +573,7 @@ function applyWatchlistSort(list) {
 
 function openScoreDetail(id) {
   const it = scoreMap.get(id);
-  if (!it) return;
+  if (!it || it.mk) { if (typeof mkOpenScore === 'function') mkOpenScore(id, (getWatchlist().find(s => s.stock_id === id) || {}).stock_name); return; }
   if (it.v2) return openScoreDetailV2(id, it);
   const P = it.parts || {};
   const row = (label, v, note) => `
@@ -646,7 +657,7 @@ async function refreshWatchlistQuotes(list = wlList) {
     // 即時報價這次失敗、但手機裡已有「今天」的報價 → 保留它（別用昨天收盤價蓋掉），標示更新失敗，20 秒後會再試。
     const cached = failed ? Backend.quotePeek(list) : null;
     if (failed && cached && quotesAreToday(cached)) {
-      await paintWatchlistQuotes(list, cached, true);
+      await paintWatchlistQuotes(list, cached, false);  // false：暫存裡沒有的（興櫃）照樣補收盤價，不要停在「載入中」
       paintQuoteTime(cached, true);
       return;
     }
@@ -749,15 +760,18 @@ async function fillCloses(missing, noKey, noClose) {
       const r = map.get(id);
       if (r && r.close != null) closes[id] = { close: r.close, change: r.pct != null ? r.close - r.close / (1 + r.pct / 100) : 0, date };
     }
-    for (const id of missing.filter(id => !closes[id]).slice(0, 5)) {
-      const s = wlList.find(x => x.stock_id === id) || { stock_id: id };
-      const rows = await Api.daily(s, 14).catch(() => []);
-      const last = rows[rows.length - 1], prev = rows[rows.length - 2];
-      if (last && last.close != null) closes[id] = { close: last.close, change: prev ? last.close - prev.close : 0, date: String(last.date).replace(/-/g, '') };
-    }
     ok = true;
-  } else {
-    try { closes = await Backend.closeAll(missing); ok = true; } catch (e) { console.warn('closeAll failed', e); }
+  }
+  // 興櫃（兩邊都沒有）：FinMind 日K 最後兩天，最多 5 檔（省額度）。先做這個，興櫃不用等慢的 Apps Script。
+  for (const id of missing.filter(id => !closes[id]).slice(0, 5)) {
+    const s = wlList.find(x => x.stock_id === id) || { stock_id: id };
+    const rows = await Api.daily(s, 14).catch(() => []);
+    const last = rows[rows.length - 1], prev = rows[rows.length - 2];
+    if (last && last.close != null) closes[id] = { close: last.close, change: prev ? last.close - prev.close : 0, date: String(last.date).replace(/-/g, '') };
+  }
+  const rest = missing.filter(id => !closes[id]);
+  if (!map && rest.length) {
+    try { Object.assign(closes, await Backend.closeAll(rest)); ok = true; } catch (e) { console.warn('closeAll failed', e); }
   }
   if (ok) {
     try {
@@ -768,7 +782,7 @@ async function fillCloses(missing, noKey, noClose) {
   // 全部都走收盤價備援時，標示收盤資料的日期（民國 1150929 / 西元 20260929 都處理）
   const lbl = $('#wl-updated');
   const dates = Object.values(closes).map(c => String(c.date || '')).filter(Boolean).sort();
-  if (lbl && !lbl.textContent && dates.length) {
+  if (lbl && !/報價時間|收盤價/.test(lbl.textContent) && dates.length) {  // 標籤只寫了「更新失敗」時也要標出這是收盤價
     const d = dates[dates.length - 1];
     const g = Backend.quoteDiag;
     lbl.textContent = `收盤價 ${d.slice(-4, -2)}/${d.slice(-2)}（即時報價暫時抓不到${g ? `：鉅亨 ${g.cnyes || '—'}、Google ${g.gas}、快速 ${g.fast}` : ''}）`;
@@ -907,6 +921,7 @@ function redrawKline(keepRange = false) {
 async function loadKline(silent = false) {
   const container = $('#chart-kline');
   const stock = currentStock;
+  const tk = tabTicket('kline');
   if (!silent || !klineData.price.length) container.innerHTML = '<div class="loading">載入中…</div>';
   try {
     const intraday = klineInterval !== '1d';
@@ -916,7 +931,7 @@ async function loadKline(silent = false) {
       intraday ? Promise.resolve([]) : Api.institutional(currentStock.stock_id, klineRange).catch(() => []),
       intraday ? Backend.kbar(currentStock, klineInterval) : Promise.resolve(null),
     ]);
-    if (stock !== currentStock) return;
+    if (!tabLive('kline', tk, stock)) return;
     if (!priceRows.length) { container.innerHTML = '<div class="error-msg">查無資料</div>'; return; }
     const drawRows = chartRows || priceRows;
     if (!drawRows.length) { container.innerHTML = '<div class="error-msg">查無分K資料</div>'; return; }
@@ -941,12 +956,13 @@ async function loadKline(silent = false) {
     } catch (e) {
       console.warn('live quote fetch failed', e);
     }
+    if (stock !== currentStock) return;  // 等報價期間換了股票：別把上一檔的價格寫到新股票的標題
 
     $('#dq-price').textContent = numFmt(price, 2);
     $('#dq-change').textContent = `${change >= 0 ? '+' : ''}${numFmt(change, 2)} (${pctFmt(pct)})`;
     $('#dq-change').className = `dq-change ${signClass(change)}`;
   } catch (e) {
-    container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (tabLive('kline', tk, stock)) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 

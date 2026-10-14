@@ -3,9 +3,11 @@
 // ---- 法人買賣超 ----
 async function loadInstitutional() {
   const container = $('#chart-inst');
+  const stock = currentStock, tk = tabTicket('inst');
   container.innerHTML = '<div class="loading">載入中…</div>';
   try {
-    const rows = await Api.institutional(currentStock.stock_id, instRange);
+    const rows = await Api.institutional(stock.stock_id, instRange);
+    if (!tabLive('inst', tk, stock)) return;
     if (!rows.length) { container.innerHTML = '<div class="error-msg">查無資料</div>'; return; }
     charts.inst = renderInstitutional(container, rows, instUnit);
     $('#inst-table-label').textContent = instUnit === 1000 ? '近期明細（張）' : '近期明細（股）';
@@ -34,7 +36,7 @@ async function loadInstitutional() {
       </tr>`;
     }).join('');
   } catch (e) {
-    container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (tabLive('inst', tk, stock)) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
@@ -100,33 +102,35 @@ function redrawHolders() {
 
 async function loadHolders() {
   const container = $('#chart-holders');
+  const stock = currentStock, tk = tabTicket('holders');
   container.innerHTML = '<div class="loading">載入中…（首次查詢約需 10 秒）</div>';
   $('#table-holders thead').innerHTML = '';
   $('#table-holders tbody').innerHTML = '';
   try {
     const [weeks, prices] = await Promise.all([
-      Backend.holders(currentStock.stock_id, 26),
-      Api.daily(currentStock, 220).catch(() => []),
+      Backend.holders(stock.stock_id, 26),
+      Api.daily(stock, 220).catch(() => []),
     ]);
+    if (!tabLive('holders', tk, stock)) return;
     if (!weeks.length) { container.innerHTML = '<div class="error-msg">查無大戶持股資料（可能是ETF或新上市）</div>'; return; }
     holdData = { weeks, prices };
     redrawHolders();
   } catch (e) {
-    container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (tabLive('holders', tk, stock)) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
 // ---- 資券（融資融券，FinMind）----
 async function loadMargin() {
   const container = $('#chart-margin');
-  const stock = currentStock;
+  const stock = currentStock, tk = tabTicket('margin');
   container.innerHTML = '<div class="loading">載入中…</div>';
   try {
     const [rows, px] = await Promise.all([
       Api.margin(stock.stock_id, marginRange),
       Api.daily(stock, marginRange).catch(() => []),
     ]);
-    if (stock !== currentStock) return;
+    if (!tabLive('margin', tk, stock)) return;
     if (!rows.length) { container.innerHTML = '<div class="error-msg">查無融資融券資料（可能不能信用交易）</div>'; $('#table-margin tbody').innerHTML = ''; return; }
     rows.sort((a, b) => (a.date < b.date ? -1 : 1));
     const dates = new Set(rows.map(r => r.date));
@@ -147,7 +151,7 @@ async function loadMargin() {
       </tr>`;
     }).join('');
   } catch (e) {
-    container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (tabLive('margin', tk, stock)) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
@@ -185,12 +189,12 @@ const wan = v => `${v > 0 ? '+' : ''}${numFmt(Math.round(v / 1e4))}`;
 async function loadWarrantBranch() {
   const body = $('#branch-body');
   const sum = $('#branch-summary');
-  const stock = currentStock;
+  const stock = currentStock, tk = tabTicket('branch');
   body.innerHTML = '<div class="loading">載入中…</div>';
   sum.innerHTML = '';
   try {
     const d = await fetchWarrantBranch(stock.stock_id);
-    if (stock !== currentStock) return;
+    if (!tabLive('branch', tk, stock)) return;
     if (!d || !d.br.length) {
       body.innerHTML = '<div class="error-msg">沒有權證分點資料（沒有發行權證，或近 20 個掃描日沒有分點大量進出這檔的權證）</div>';
       return;
@@ -236,7 +240,7 @@ async function loadWarrantBranch() {
     body.querySelectorAll('.wb-link').forEach(el =>
       el.addEventListener('click', () => openWarrantBranchHist(stock, d, el.dataset.n)));
   } catch (e) {
-    body.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (tabLive('branch', tk, stock)) body.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
@@ -267,12 +271,12 @@ async function loadBranch() {
   if (branchMode === 'warrant') return loadWarrantBranch();
   const body = $('#branch-body');
   const sum = $('#branch-summary');
-  const stock = currentStock;
+  const stock = currentStock, tk = tabTicket('branch');
   body.innerHTML = '<div class="loading">載入中…</div>';
   sum.innerHTML = '';
   try {
     const d = await Backend.branch(stock.stock_id, branchPeriod);
-    if (stock !== currentStock) return;
+    if (!tabLive('branch', tk, stock)) return;
     if (!d.buy.length && !d.sell.length) { body.innerHTML = '<div class="error-msg">查無分點資料（ETF、興櫃或當日無交易）</div>'; return; }
     const net = (d.sumBuy || 0) - (d.sumSell || 0);
     sum.innerHTML = `
@@ -302,16 +306,17 @@ async function loadBranch() {
     body.querySelectorAll('.br-link').forEach(el =>
       el.addEventListener('click', () => openBranchHist(stock, el.dataset.bid, el.dataset.bhid, el.dataset.name)));
   } catch (e) {
-    body.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (tabLive('branch', tk, stock)) body.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
 // 單一分點在這檔股票最近約 20 個交易日的每日進出
 async function openBranchHist(stock, bid, bhid, name) {
   showModal(`<div class="modal-title">${name}｜${stock.stock_name}</div><div class="loading">載入中…</div>`);
+  const ms = modalSeq;
   try {
     const d = await Backend.branchHist(stock.stock_id, bid, bhid);
-    if (!$('#modal').classList.contains('active')) return;
+    if (!$('#modal').classList.contains('active') || ms !== modalSeq) return;
     if (!d.rows.length) { $('#modal-card').innerHTML = `<div class="modal-title">${name}</div><div class="error-msg">查無進出紀錄</div>`; return; }
     const max = Math.max(1, ...d.rows.map(r => Math.abs(r.net || 0)));
     const buyDays = d.rows.filter(r => r.net > 0).length;
@@ -338,7 +343,7 @@ async function openBranchHist(stock, bid, bhid, name) {
     $('#brh-top').addEventListener('click', () => openBranchTop(bid, bhid, name, 1));
     $('#brh-close').addEventListener('click', closeModal);
   } catch (e) {
-    $('#modal-card').innerHTML = `<div class="modal-title">${name}</div><div class="error-msg">載入失敗：${e.message}</div>`;
+    if (ms === modalSeq) $('#modal-card').innerHTML = `<div class="modal-title">${name}</div><div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
@@ -352,9 +357,10 @@ async function openBranchTop(bid, bhid, name, period) {
   showModal(head + '<div class="loading">載入中…</div>');
   const wire = () => $$('#modal-card [data-p]').forEach(b => b.addEventListener('click', () => openBranchTop(bid, bhid, name, Number(b.dataset.p))));
   wire();
+  const ms = modalSeq;
   try {
     const d = await Backend.branchTop(bid, bhid, period);
-    if (!$('#modal').classList.contains('active')) return;
+    if (!$('#modal').classList.contains('active') || ms !== modalSeq) return;
     const watched = new Set(getWatchlist().map(s => s.stock_id));
     const list = (rows, dir) => `
       <div class="branch-title ${dir}">${dir === 'up' ? '買超' : '賣超'}前 15 檔（張）</div>
@@ -374,6 +380,7 @@ async function openBranchTop(bid, bhid, name, period) {
     }));
     $('#brt-close').addEventListener('click', closeModal);
   } catch (e) {
+    if (ms !== modalSeq) return;
     $('#modal-card').innerHTML = head + `<div class="error-msg">載入失敗：${e.message}</div>`;
     wire();
   }

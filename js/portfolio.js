@@ -24,8 +24,8 @@ const Portfolio = {
   },
 
   async load() {
-    const res = await fetch(`${backendUrl()}?action=portfolio&token=${encodeURIComponent(backendToken())}`);
-    const json = await res.json();
+    // 2026-10-14：改走 gasGet（有逾時與重試一次；原本 fetch 沒有上限，後端卡住時頁面一直轉）
+    const json = await gasGet(`action=portfolio&token=${encodeURIComponent(backendToken())}`);
     if (json.status === 401) throw new Error('後端寫入密碼不正確或沒填（請到首頁 ⚙ 設定填一次）');
     if (json.status !== 200) throw new Error(json.error || '後端還沒有操作計畫功能（請先更新 Apps Script）');
     this.lots = json.data.lots || [];
@@ -39,7 +39,12 @@ const Portfolio = {
   loadCache() {
     try {
       const c = JSON.parse(localStorage.getItem('portfolio_cache') || 'null');
-      if (c) { this.lots = c.lots || []; this.settings = c.settings; this.advice = c.advice; this.midlong = c.midlong || null; this.stockPlan = c.stockPlan || null; return true; }
+      if (c) {
+        this.lots = c.lots || []; this.settings = c.settings; this.advice = c.advice; this.midlong = c.midlong || null; this.stockPlan = c.stockPlan || null;
+        // 上次的報價也先拿出來用（原本先顯示暫存時沒有報價，未實現損益會暫時變成 +0）
+        if (!Object.keys(this.quotes).length) { try { this.quotes = JSON.parse(localStorage.getItem('portfolio_quotes') || '{}'); } catch (e) {} }
+        return true;
+      }
     } catch (e) {}
     return false;
   },
@@ -55,12 +60,19 @@ const Portfolio = {
     try { q = await Backend.quote(stocks); } catch (e) { console.warn('quote failed', e); }
     const missing = ids.filter(id => !(q[id] && q[id].price != null));
     if (missing.length) {
-      try {
-        const c = await Backend.closeAll(missing);
-        missing.forEach(id => { if (c[id] && c[id].close != null) q[id] = { price: c[id].close, change: c[id].change }; });
-      } catch (e) { console.warn('closeAll failed', e); }
+      // 2026-10-14：先用全市場收盤檔（mk/day.json，很快），沒有的才問 Apps Script closeAll（曾慢到 46 秒，整頁要等它）
+      const map = typeof Mk !== 'undefined' ? await Mk.dayMap().catch(() => null) : null;
+      if (map) missing.forEach(id => { const r = map.get(id); if (r && r.close != null) q[id] = { price: r.close, change: r.pct != null ? r.close - r.close / (1 + r.pct / 100) : 0 }; });
+      const still = missing.filter(id => !q[id]);
+      if (still.length && !map) {
+        try {
+          const c = await Backend.closeAll(still);
+          still.forEach(id => { if (c[id] && c[id].close != null) q[id] = { price: c[id].close, change: c[id].change }; });
+        } catch (e) { console.warn('closeAll failed', e); }
+      }
     }
     this.quotes = q;
+    try { localStorage.setItem('portfolio_quotes', JSON.stringify(q)); } catch (e) {}
     try {
       const list = await Backend.list();
       this.eps = Object.fromEntries(list.map(s => [s.stock_id, s]));
@@ -214,6 +226,11 @@ function renderPortfolio() {
 
 async function openPortfolio(refresh = true) {
   showScreen('screen-portfolio');
+  if (!isOwner()) {  // 訪客：不顯示任何暫存（可能是這台以前擁有者留下的）
+    ['#pf-summary', '#pf-stockplan', '#pf-midlong', '#pf-advice'].forEach(s => { const el = $(s); if (el) el.innerHTML = ''; });
+    $('#pf-list').innerHTML = '<div class="empty-hint">訪客模式：操作計畫是擁有者功能（到 ⚙ 設定填「後端寫入密碼」）</div>';
+    return;
+  }
   if (Portfolio.loadCache()) renderPortfolio();
   else $('#pf-list').innerHTML = `<div class="empty-hint">載入中…</div>`;
   if (!refresh) return;

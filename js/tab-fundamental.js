@@ -3,9 +3,11 @@
 // ---- 營收 ----
 async function loadRevenue() {
   const container = $('#chart-revenue');
+  const stock = currentStock, tk = tabTicket('revenue');
   container.innerHTML = '<div class="loading">載入中…</div>';
   try {
-    const rows = await Api.monthRevenue(currentStock.stock_id, 36);
+    const rows = await Api.monthRevenue(stock.stock_id, 36);
+    if (!tabLive('revenue', tk, stock)) return;
     if (!rows.length) { container.innerHTML = '<div class="error-msg">查無資料</div>'; return; }
     charts.revenue = renderRevenue(container, rows);
 
@@ -27,16 +29,18 @@ async function loadRevenue() {
       </tr>`;
     }).join('');
   } catch (e) {
-    container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (tabLive('revenue', tk, stock)) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 }
 
 // ---- 獲利 ----
 async function loadProfit() {
   const container = $('#chart-profit');
+  const stock = currentStock, tk = tabTicket('profit');
   container.innerHTML = '<div class="loading">載入中…</div>';
   try {
-    const rows = await Api.financials(currentStock.stock_id, 3);
+    const rows = await Api.financials(stock.stock_id, 3);
+    if (!tabLive('profit', tk, stock)) return;
     if (!rows.length) { container.innerHTML = '<div class="error-msg">查無資料</div>'; return; }
 
     const byDate = new Map();
@@ -76,6 +80,7 @@ async function loadProfit() {
       </tr>`;
     }).join('');
   } catch (e) {
+    if (!tabLive('profit', tk, stock)) return;
     container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
 
@@ -95,18 +100,25 @@ function peColorClass(pe) {
 async function loadEpsEstimate() {
   $('#eps-status').textContent = '';
   $('#eps-pe-row').innerHTML = '';
+  // 先清掉上一檔的數字（讀取期間按儲存才不會把上一檔的 EPS 存到這一檔）
+  $('#eps-2026-input').value = '';
+  $('#eps-2027-input').value = '';
+  $('#btn-save-eps').disabled = true;  // 讀到這一檔的數字前不能按（空白＝清除，會誤刪）
+  const stock = currentStock, tk = tabTicket('eps');
   try {
     const [backendList, quotes] = await Promise.all([
       Backend.list(),
-      Backend.quote([currentStock]).catch(() => ({})),
+      Backend.quote([stock]).catch(() => ({})),
     ]);
-    const entry = backendList.find(s => s.stock_id === currentStock.stock_id);
-    const q = quotes[currentStock.stock_id];
+    const entry = backendList.find(s => s.stock_id === stock.stock_id);
+    const q = quotes[stock.stock_id];
     let price = q && q.price != null ? q.price : null;
     if (price == null) {
-      const rows = await Api.daily(currentStock, 10).catch(() => []);
+      const rows = await Api.daily(stock, 10).catch(() => []);
       price = rows.length ? rows[rows.length - 1].close : null;
     }
+    // 換了股票：別把上一檔的 EPS 填進這一檔的欄位（之後按儲存會存錯股票）
+    if (!tabLive('eps', tk, stock)) return;
 
     // 年份跟著後端（定錨換年度後 epsYear 會 +1）；舊後端沒有 epsYear 就當 2026
     const Y = Number((entry && entry.epsYear) || (backendList[0] && backendList[0].epsYear)) || 2026;
@@ -117,6 +129,7 @@ async function loadEpsEstimate() {
     $('#eps-y2-label').textContent = Y + 1;
     $('#eps-2026-input').value = a != null ? a : '';
     $('#eps-2027-input').value = b != null ? b : '';
+    $('#btn-save-eps').disabled = false;  // 讀取失敗時維持不能按（避免空白欄位把原本的 EPS 清掉）
 
     const chips = [];
     if (price && entry) {
@@ -130,7 +143,7 @@ async function loadEpsEstimate() {
     $('#eps-pe-row').innerHTML = chips.join('');
     if (!isOwner()) $('#eps-status').textContent = '訪客模式：預估 EPS 是擁有者功能（到 ⚙ 設定填寫入密碼）';
   } catch (e) {
-    $('#eps-status').textContent = `讀取預估EPS失敗：${e.message}`;
+    if (tabLive('eps', tk, stock)) $('#eps-status').textContent = `讀取預估EPS失敗：${e.message}`;
   }
 }
 

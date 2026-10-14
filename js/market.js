@@ -1,5 +1,5 @@
 // 全市場資料（2026-10-13）：排行榜、大盤指數、任何一檔的法人／資券／評分，不限自選清單。
-// 資料：mk/day.json、inst.json、margin.json、scores.json（台股AI盯盤Agent/market_export.py 每天 17:10、21:40 產生並部署，
+// 資料：mk/day.json、inst.json、margin.json、scores.json（台股AI盯盤Agent/market_export.py 每個交易日 17:30、19:30、21:40 產生並部署，
 // 來源是證交所／櫃買官方公開資料）＋盤中即時報價直接問鉅亨。
 const Mk = {
   cache: {}, stamp: {},
@@ -51,7 +51,7 @@ const Mk = {
 const mkEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // ---------------------------------------------------------------- 個股：法人／資券改用官方全市場資料
-// 最近 40 個交易日用 mk（官方、當天 17:10／21:40 就有、不耗 FinMind 額度）；更早的歷史才用 FinMind。
+// 最近 40 個交易日用 mk（官方、當天傍晚就有、不耗 FinMind 額度）；更早的歷史才用 FinMind。
 // FinMind 沒填授權碼或額度用完時，至少還有最近 40 天。
 (() => {
   const merge = async (fmCall, mkRows, since) => {
@@ -113,6 +113,25 @@ async function mkPaintDetailScore(stock) {
   box.innerHTML = `<span class="sc-badge has ${scoreClass(sc)}">${sc ?? '—'}</span><span class="dt-score-lbl">全市場評分${safe ? '（穩健）' : ''}</span><span class="dt-score-more">細項 ›</span>`;
   box.onclick = () => mkOpenScore(stock.stock_id, stock.stock_name);
   box.hidden = false;
+}
+// 清單上沒有後端分數的股票（訪客、或後端評分還沒涵蓋）→ 用全市場評分補徽章，排序也算進去
+async function mkFillScores(list) {
+  let d;
+  try { d = await Mk.load('scores'); } catch (e) { return; }
+  const safe = scoreMode === 'safe';
+  let n = 0;
+  for (const s of list) {
+    const cur = scoreMap.get(s.stock_id);
+    if (cur && cur.score != null) continue;
+    const a = d.items[s.stock_id];
+    const sc = a ? (safe ? a[1] : a[0]) : null;
+    if (sc == null) continue;
+    scoreMap.set(s.stock_id, { id: s.stock_id, score: sc, mk: true, signals: (cur && cur.signals) || [] });
+    const b = $(`#wl-sc-${s.stock_id}`);
+    if (b) { b.textContent = sc; b.className = `sc-badge has ${scoreClass(sc)}`; }
+    n++;
+  }
+  if (n) applyWatchlistSort(list);
 }
 async function mkOpenScore(id, name) {
   const d = await Mk.load('scores');
@@ -257,7 +276,7 @@ async function openRank() {
         <div class="rk-name"><b>${mkEsc(r.name || r.id)}</b>${r.score != null ? ` <span class="sc-badge has ${scoreClass(r.score)}" data-score="1">${r.score}</span>` : ''}<br><span class="dim">${r.id}${watched.has(r.id) ? ' ★' : ''}　${r.sub}</span></div>
         <div class="rk-val"><b class="${signClass(p.pct)}">${p.close != null ? numFmt(p.close, 2) : '—'}</b> <span class="${signClass(p.pct)}">${p.pct != null ? pctFmt(p.pct) : ''}</span>${r.main ? `<br><b class="${r.cls}">${r.main}</b>` : ''}</div>
       </div>`;
-    }).join('') + '<div class="branch-note">資料來源：證交所、櫃買中心每天公布的全市場資料（法人約 17:10、融資約 21:40 更新到這裡），盤中價格來自鉅亨即時報價。資訊整理，非投資建議。</div>';
+    }).join('') + '<div class="branch-note">資料來源：證交所、櫃買中心每天公布的全市場資料（法人約 17:30～19:30、融資約 21:40 更新到這裡），盤中價格來自鉅亨即時報價。資訊整理，非投資建議。</div>';
     box.querySelectorAll('.rk-row').forEach(el => el.addEventListener('click', e => {
       const r = Rank.rows[Number(el.dataset.i)];
       if (e.target.dataset.score) { mkOpenScore(r.id, r.name); return; }
@@ -268,7 +287,7 @@ async function openRank() {
       openStock(navStocks[Number(el.dataset.i)]);
     }));
   } catch (e) {
-    if (seq === Rank.seq) box.innerHTML = `<div class="error-msg">載入失敗：${e.message}（全市場資料每天 17:10 後更新）</div>`;
+    if (seq === Rank.seq) box.innerHTML = `<div class="error-msg">載入失敗：${e.message}（全市場資料每個交易日 17:30 後更新；網路不穩請稍後再試）</div>`;
   }
 }
 
@@ -315,7 +334,7 @@ async function mkAutoRefresh(resume) {
   if (mkActive('#screen-rank')) { if (resume || (twMarketOpen() && rkIsPrice())) openRank(); }
   if (resume && mkActive('#screen-radar') && typeof openRadar === 'function') openRadar();
   if (resume && mkActive('#screen-portfolio') && typeof openPortfolio === 'function' && !mkActive('#modal')) openPortfolio(true);
-  // 官方資料檔有新版（法人 17:10、資券 21:40）→ 正在看的法人／資券／日K 重新載入
+  // 官方資料檔有新版（法人 17:30／19:30、資券 21:40）→ 正在看的法人／資券／日K 重新載入
   for (const name of ['inst', 'margin', 'scores']) {
     let d;
     try { d = await Mk.load(name); } catch (e) { continue; }

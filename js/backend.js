@@ -69,8 +69,11 @@ async function cnyesQuotes(stocks) {
   const chunks = [];
   for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
   const out = {};
+  // 2026-10-14：一次 50 檔分批抓，其中一批失敗不要拖垮全部（原本 Promise.all 一批錯就整個改走慢的備援）
+  let fails = 0;
   await Promise.all(chunks.map(async c => {
-    const data = await cnyesGet('/v2/quote/quotes/' + c.map(cnyesSym).join(','));
+    let data;
+    try { data = await cnyesGet('/v2/quote/quotes/' + c.map(cnyesSym).join(',')); } catch (e) { fails++; return; }
     for (const d of data || []) {
       const id = d['200010'];
       if (!id || d['6'] == null) continue;
@@ -82,6 +85,7 @@ async function cnyesQuotes(stocks) {
       };
     }
   }));
+  if (fails && fails === chunks.length) throw new Error('cnyes 全部失敗');
   return out;
 }
 // 歷史 K：cnyes 回傳由新到舊的平行陣列 {t,o,h,l,c,v}；轉成由舊到新
