@@ -339,3 +339,30 @@ setInterval(() => mkAutoRefresh(false), 20000);
 })();
 paintIndexBar();
 mkAutoRefresh(false);
+
+// ---------------------------------------------------------------- 上市／上櫃以官方最新資料為準（2026-10-14）
+// FinMind 股票清單裡「上櫃轉上市」的股票新舊兩筆都在（例：矽格、鈺邦、富鼎），marketFor 可能拿到舊的 → 後端被記錯市場。
+// 現在先看 mk/day.json（證交所／櫃買當天資料），沒有才用 FinMind。擁有者的清單若有記錯的，每天自動更正一次（fixMarket）。
+(() => {
+  const fmFor = marketFor;
+  marketFor = id => {
+    const c = Mk.cache.day, r = c && c.data._map && c.data._map.get(id);
+    return r && r.mkt ? r.mkt : fmFor(id);
+  };
+})();
+Mk.dayMap().then(map => {
+  if (!isOwner()) return;
+  const key = 'mkfix_' + twToday();
+  if (localStorage.getItem(key)) return;
+  setTimeout(async () => {  // 等清單從後端同步完再比（本機清單不存市場，要看後端那份）
+    try {
+      const remote = await Backend.list();
+      const fix = remote.filter(s => s.market && map.has(s.stock_id) && map.get(s.stock_id).mkt && s.market !== map.get(s.stock_id).mkt);
+      if (fix.length) {
+        await Backend.bulkUpsert(fix.map(s => ({ stock_id: s.stock_id, stock_name: s.stock_name, market: map.get(s.stock_id).mkt, fixMarket: true })));
+        console.info('已更正上市/上櫃：', fix.map(s => s.stock_id).join(','));
+      }
+      localStorage.setItem(key, '1');
+    } catch (e) { console.warn('上市/上櫃更正失敗', e); }
+  }, 15000);
+}).catch(() => {});

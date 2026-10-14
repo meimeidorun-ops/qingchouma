@@ -729,7 +729,7 @@ async function paintWatchlistQuotes(list, quotes, cachedOnly) {
   if (!missing.length || cachedOnly) return;
   // 2026-10-14：補收盤價（Apps Script，曾慢到 46 秒）改成背景做，不再卡住清單的「更新中」→ 其他股票照常每 20 秒更新。
   // 興櫃股問了也沒有收盤價：今天問過沒資料的代號記下來，今天不再問。
-  const noKey = 'noclose_' + twToday();
+  const noKey = 'noclose2_' + twToday();  // v57 改用 mk 檔＋FinMind 補收盤價，換鍵名讓 v56 記下的「沒資料」重新試一次
   let noClose = [];
   try { noClose = JSON.parse(localStorage.getItem(noKey) || '[]'); } catch (e) {}
   const ask = missing.filter(id => !noClose.includes(id));
@@ -738,13 +738,30 @@ async function paintWatchlistQuotes(list, quotes, cachedOnly) {
 }
 
 async function fillCloses(missing, noKey, noClose) {
-  // Live quote unavailable (night/weekend/MIS hiccup): ONE request for all official closes
-  // (TWSE + TPEx OpenAPI via Apps Script) instead of one FinMind call per stock.
+  // 即時報價沒有的股票補「最近收盤價」（2026-10-14 改）：
+  //  ①上市櫃：mk/day.json（每天官方全市場收盤，本站靜態檔、很快）；②興櫃（day.json 沒有）：FinMind 日K 最後兩天；
+  //  ③mk 檔抓不到時才問 Apps Script closeAll（曾慢到 46 秒）。
   let closes = {}, ok = false;
-  try { closes = await Backend.closeAll(missing); ok = true; } catch (e) { console.warn('closeAll failed', e); }
+  const map = typeof Mk !== 'undefined' ? await Mk.dayMap().catch(() => null) : null;
+  if (map) {
+    const date = (Mk.cache.day && Mk.cache.day.data.date || '').replace(/-/g, '');
+    for (const id of missing) {
+      const r = map.get(id);
+      if (r && r.close != null) closes[id] = { close: r.close, change: r.pct != null ? r.close - r.close / (1 + r.pct / 100) : 0, date };
+    }
+    for (const id of missing.filter(id => !closes[id]).slice(0, 5)) {
+      const s = wlList.find(x => x.stock_id === id) || { stock_id: id };
+      const rows = await Api.daily(s, 14).catch(() => []);
+      const last = rows[rows.length - 1], prev = rows[rows.length - 2];
+      if (last && last.close != null) closes[id] = { close: last.close, change: prev ? last.close - prev.close : 0, date: String(last.date).replace(/-/g, '') };
+    }
+    ok = true;
+  } else {
+    try { closes = await Backend.closeAll(missing); ok = true; } catch (e) { console.warn('closeAll failed', e); }
+  }
   if (ok) {
     try {
-      Object.keys(localStorage).filter(k => k.startsWith('noclose_') && k !== noKey).forEach(k => localStorage.removeItem(k));
+      Object.keys(localStorage).filter(k => k.startsWith('noclose') && k !== noKey).forEach(k => localStorage.removeItem(k));
       localStorage.setItem(noKey, JSON.stringify([...new Set(noClose.concat(missing.filter(id => !closes[id] || closes[id].close == null)))]));
     } catch (e) {}
   }
@@ -814,6 +831,7 @@ async function loadRealtime(silent = false) {
       rtHandle = null;
       container.innerHTML = '<div class="error-msg">目前沒有即時走勢資料</div>';
       $('#rt-stats').innerHTML = '';
+      $('#rt-note').textContent = '';  // 別留著上一檔的「資料時間」
       return;
     }
     if (!rtHandle) rtHandle = renderRealtime(container, prev);
@@ -839,7 +857,15 @@ async function loadRealtime(silent = false) {
     $('#rt-note').textContent = `資料時間 ${hh}:${mm}（盤中每 15 秒自動更新；走勢圖來源 Yahoo 財經，可能有 1–2 分鐘延遲，右上角價格以證交所即時為準）`;
   } catch (e) {
     if (stock !== currentStock) return;
-    if (!rtHandle) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+    if (!rtHandle) { container.innerHTML = `<div class="error-msg">目前沒有即時走勢資料（${e.message}）</div>`; $('#rt-stats').innerHTML = ''; $('#rt-note').textContent = ''; }
+    // 走勢抓不到（例：興櫃股）時，右上角至少顯示最近收盤價，不要一直停在「載入中…」
+    if (/載入中/.test($('#dq-change').textContent)) {
+      const rows = await Api.daily(stock, 14).catch(() => []);
+      if (stock !== currentStock) return;
+      const last = rows[rows.length - 1], p = rows[rows.length - 2];
+      if (last) applyHeaderQuote(last.close, p ? last.close - p.close : 0, p && p.close ? ((last.close - p.close) / p.close) * 100 : 0);
+      else { $('#dq-change').textContent = '無報價'; }
+    }
   }
 }
 
@@ -1117,8 +1143,9 @@ document.addEventListener('DOMContentLoaded', () => {
         epsA: a === '' ? null : Number(a),
         epsB: b === '' ? null : Number(b),
       });
-      $('#eps-status').textContent = '已儲存';
-      loadEpsEstimate();
+      // 2026-10-14 修：原本先寫「已儲存」再重新讀取，重新讀取一開始就清空狀態 → 使用者看不到「已儲存」
+      await loadEpsEstimate();
+      if (!$('#eps-status').textContent) $('#eps-status').textContent = '已儲存';
     } catch (e) {
       $('#eps-status').textContent = `儲存失敗：${e.message}`;
     }
