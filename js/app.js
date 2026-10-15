@@ -705,7 +705,8 @@ function qlogPush(quotes, failed) {
     const newest = vals.length ? vals.reduce((a, b) => ((a.date + a.time) >= (b.date + b.time) ? a : b)) : null;
     const log = JSON.parse(localStorage.getItem('qlog') || '[]');
     log.unshift({ at: new Date(Date.now() + 8 * 3600e3).toISOString().slice(5, 19).replace('T', ' '), ok: !failed,
-      src: `鉅亨 ${d.cnyes || '—'}／Google ${d.gas || '—'}／快速 ${d.fast || '—'}`, newest: newest ? newest.time : '—', n: vals.length });
+      src: `鉅亨 ${d.cnyes || '—'}／Google ${d.gas || '—'}／快速 ${d.fast || '—'}`, newest: newest ? newest.time : '—', n: vals.length,
+      g: (() => { try { return `${activeGroup().name} ${wlList.length} 檔`; } catch (e) { return ''; } })() });  // 2026-10-16：記是哪個清單
     localStorage.setItem('qlog', JSON.stringify(log.slice(0, 30)));
   } catch (e) {}
 }
@@ -714,8 +715,8 @@ function openQuoteLog() {
   try { log = JSON.parse(localStorage.getItem('qlog') || '[]'); } catch (e) {}
   showModal(`
     <div class="modal-title">報價更新紀錄（最近 30 次）</div>
-    <div class="dim" style="margin-bottom:6px">時間｜結果｜最新成交時間｜檔數｜各來源狀態</div>
-    <div style="font-size:12px;line-height:1.6;max-height:60vh;overflow:auto">${log.map(r => `<div>${r.at}｜${r.ok ? '✓' : '⚠ 失敗'}｜${r.newest}｜${r.n}｜${r.src}</div>`).join('') || '<div class="dim">還沒有紀錄</div>'}</div>
+    <div class="dim" style="margin-bottom:6px">時間｜清單｜結果｜最新成交時間｜拿到檔數｜各來源狀態</div>
+    <div style="font-size:12px;line-height:1.6;max-height:60vh;overflow:auto">${log.map(r => `<div>${r.at}｜${r.g || '—'}｜${r.ok ? '✓' : '⚠ 失敗'}｜${r.newest}｜${r.n}｜${r.src}</div>`).join('') || '<div class="dim">還沒有紀錄</div>'}</div>
     <button class="modal-btn" id="ql-close" style="text-align:center;margin-top:10px">關閉</button>`);
   $('#ql-close').addEventListener('click', closeModal);
 }
@@ -763,11 +764,17 @@ async function fillCloses(missing, noKey, noClose) {
     ok = true;
   }
   // 興櫃（兩邊都沒有）：FinMind 日K 最後兩天，最多 5 檔（省額度）。先做這個，興櫃不用等慢的 Apps Script。
+  // 2026-10-16：查到的結果記在手機裡 30 分鐘（原本盤中每 20 秒都重查，興櫃每次都要繞 Google 後端一圈）
   for (const id of missing.filter(id => !closes[id]).slice(0, 5)) {
+    const ck = 'eclose_' + id;
+    try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.t < 30 * 60e3) { closes[id] = c.v; continue; } } catch (e) {}
     const s = wlList.find(x => x.stock_id === id) || { stock_id: id };
     const rows = await Api.daily(s, 14).catch(() => []);
     const last = rows[rows.length - 1], prev = rows[rows.length - 2];
-    if (last && last.close != null) closes[id] = { close: last.close, change: prev ? last.close - prev.close : 0, date: String(last.date).replace(/-/g, '') };
+    if (last && last.close != null) {
+      closes[id] = { close: last.close, change: prev ? last.close - prev.close : 0, date: String(last.date).replace(/-/g, '') };
+      try { localStorage.setItem(ck, JSON.stringify({ t: Date.now(), v: closes[id] })); } catch (e) {}
+    }
   }
   const rest = missing.filter(id => !closes[id]);
   if (!map && rest.length) {

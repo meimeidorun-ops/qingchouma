@@ -324,12 +324,33 @@ const Backend = {
           throw new Error('cnyes delayed');
         }
         Backend.quoteDiag = { cnyes: `只拿到 ${n}/${stocks.length}` };
+        // 2026-10-16：大清單（定錨 94 檔＝兩批）其中一批沒抓到時，不要整份丟掉 → 只把缺的那些拿去問備援，合併回來。
+        // 備援也抓不到時，至少回傳鉅亨已拿到的部分（原本會整份失敗、畫面停在舊價格）。
+        if (n && n >= Math.ceil(stocks.length * 0.3)) {
+          const lag = quoteLagMin(c);
+          if (lag == null || lag <= 3) {
+            const rest = stocks.filter(s => !c[s.stock_id]);
+            let more = {};
+            try { more = await Backend.quoteFallback(rest); } catch (e2) { /* 備援也失敗：用鉅亨這部分 */ }
+            Backend.quoteDiag = Object.assign({}, Backend.quoteDiag, { cnyes: `鉅亨 ${n}/${stocks.length}＋備援 ${Object.keys(more).length}`, at: Date.now() });
+            return Object.assign(more, c);
+          }
+        }
       } catch (e) {
         if (!cnyesStale) Backend.quoteDiag = { cnyes: e && e.name === 'AbortError' ? '逾時' : '失敗' };
         console.warn('cnyes quote failed, fallback', e);
       }
     }
     const cnyesState = (Backend.quoteDiag || {}).cnyes || '關閉';
+    try { return await Backend.quoteFallback(stocks, cnyesState); } catch (e) {
+      if (cnyesStale) return cnyesStale;  // 證交所也抓不到 → 用延遲的鉅亨（畫面會標示延遲）
+      throw e;
+    }
+  },
+
+  // 備援報價：Apps Script 與快速後端（證交所 MIS／Yahoo）同時問。鉅亨失敗、延遲或缺檔時才用。
+  async quoteFallback(stocks, cnyesState = '—') {
+    if (!stocks.length) return {};
     const ids = stocks.map(s => `${s.market || marketFor(s.stock_id)}:${s.stock_id}`).join(',');
     // 即時報價：Apps Script 和快速後端同時問。證交所 MIS（最即時）海外主機常連不上，所以：
     // 誰先回「MIS 資料」就用誰；快速後端只拿到 Yahoo 時，再等 Apps Script 最多 3 秒，等不到就用 Yahoo。
@@ -372,7 +393,6 @@ const Backend = {
       gas.then(settle);
       fast.then(settle);
     });
-    if (!data && cnyesStale) return cnyesStale;  // 證交所也抓不到 → 用延遲的鉅亨（畫面會標示延遲）
     if (!data) throw new Error(`quote unavailable (Google:${diag.gas} 快速:${diag.fast})`);
     return data;
   },
