@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '60';
+window.APP_V = '61';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -313,6 +313,73 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
     </div>
   </section>
 
+  <!-- ================= 大盤（2026-10-22）：指數走勢／K線、三大法人買賣金額、融資融券 ================= -->
+  <section id="screen-index" class="screen">
+    <div class="topbar">
+      <button class="back-btn" id="btn-ix-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">大盤</div>
+      <div class="spacer"></div>
+    </div>
+    <div class="pf-scroll">
+      <div class="range-bar" id="ix-mkt">
+        <button class="range-btn active" data-m="tse">加權指數</button>
+        <button class="range-btn" data-m="otc">櫃買指數</button>
+      </div>
+      <div class="ix-head" id="ix-head"></div>
+      <div class="range-bar" id="ix-view">
+        <button class="range-btn" data-v="rt">即時</button>
+        <button class="range-btn active" data-v="d">日K</button>
+        <span style="width:8px"></span>
+        <button class="range-btn" data-r="60">3個月</button>
+        <button class="range-btn active" data-r="125">6個月</button>
+        <button class="range-btn" data-r="250">1年</button>
+      </div>
+      <div class="range-bar" id="ix-layers" style="padding-top:0">
+        <button class="range-btn active" data-layer="inst">法人</button>
+        <button class="range-btn active" data-ind="">無</button>
+        <button class="range-btn" data-ind="kd">KD</button>
+        <button class="range-btn" data-ind="macd">MACD</button>
+      </div>
+      <div class="legend-row" id="ix-legend">
+        <span><span class="dot" style="background:#f2c744"></span>MA5</span>
+        <span><span class="dot" style="background:#7aa2f7"></span>MA20</span>
+        <span class="dim">量＝成交值（億）；法人＝三大法人合計（億）</span>
+      </div>
+      <div class="chart-container tall" id="ix-chart"></div>
+      <p class="hint" id="ix-note" style="padding:4px 16px 0"></p>
+
+      <div class="section-label">三大法人買賣超（億元）</div>
+      <div class="range-bar" id="ix-inst-who" style="padding-top:0">
+        <button class="range-btn active" data-w="all">合計</button>
+        <button class="range-btn" data-w="f">外資</button>
+        <button class="range-btn" data-w="t">投信</button>
+        <button class="range-btn" data-w="d">自營商</button>
+      </div>
+      <div class="chart-container" id="ix-inst-chart"></div>
+      <div class="table-wrap">
+        <table class="data-table compact" id="ix-inst-table">
+          <thead><tr><th>日期</th><th>外資</th><th>投信</th><th>自營商</th><th>合計</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section-label">融資融券</div>
+      <div class="legend-row">
+        <span><span class="dot" style="background:#e6413c"></span>融資餘額（億，右軸）</span>
+        <span><span class="dot" style="background:#1fa363"></span>融券餘額（張，左軸）</span>
+        <span><span class="dot" style="background:#c9d1d9"></span>指數</span>
+      </div>
+      <div class="chart-container" id="ix-margin-chart"></div>
+      <div class="table-wrap">
+        <table class="data-table compact" id="ix-margin-table">
+          <thead><tr><th>日期</th><th>融資餘額(億)</th><th>增減(億)</th><th>融券(張)</th><th>增減</th><th>券資比</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint" style="padding:8px 16px 24px">資料來源：指數走勢與 K 線來自鉅亨；三大法人買賣金額、融資融券來自證交所（上市）與櫃買中心（上櫃），每個交易日傍晚更新（法人約 17:30、融資約 21:40）。資訊整理，非投資建議。</p>
+    </div>
+  </section>
+
   <!-- ================= 全市場排行 ================= -->
   <section id="screen-rank" class="screen">
     <div class="topbar">
@@ -368,7 +435,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>
