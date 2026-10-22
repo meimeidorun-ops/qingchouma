@@ -42,7 +42,11 @@ function getWatchlist() {
   try { return JSON.parse(localStorage.getItem('watchlist') || '[]'); } catch (e) { return []; }
 }
 function setWatchlist(list) {
-  localStorage.setItem('watchlist', JSON.stringify(list));
+  const v = JSON.stringify(list);
+  try { localStorage.setItem('watchlist', v); } catch (e) {
+    // 空間滿了：清掉可重抓的快取（FinMind、後端暫存）再寫一次
+    try { Object.keys(localStorage).filter(k => /^(fmfb_|bk_)/.test(k)).forEach(k => localStorage.removeItem(k)); localStorage.setItem('watchlist', v); } catch (e2) { console.warn('watchlist save failed', e2); }
+  }
 }
 function isWatched(stockId) {
   return getWatchlist().some(s => s.stock_id === stockId);
@@ -70,8 +74,12 @@ function normalizeGroups() {
 
 let pushGroupsTimer = null;
 function saveGroups(push = true) {
-  localStorage.setItem('groups', JSON.stringify(groups));
-  localStorage.setItem('active_group', activeGroupId);
+  try {
+    localStorage.setItem('groups', JSON.stringify(groups));
+    localStorage.setItem('active_group', activeGroupId);
+  } catch (e) {  // 空間滿了也不能讓切分頁、加股票整個壞掉
+    try { Object.keys(localStorage).filter(k => /^(fmfb_|bk_)/.test(k)).forEach(k => localStorage.removeItem(k)); localStorage.setItem('groups', JSON.stringify(groups)); localStorage.setItem('active_group', activeGroupId); } catch (e2) { console.warn('groups save failed', e2); }
+  }
   if (push) {
     clearTimeout(pushGroupsTimer);
     pushGroupsTimer = setTimeout(() => Backend.setGroups(groups).catch(e => { console.warn('groups sync failed', e); toastWarn(e); }), 800);
@@ -636,11 +644,18 @@ let wlBusy = false;
 // 原本新的更新會被跳過、舊的那次又因為清單換了而放棄 → 整頁停在「載入中」（盤後不會自動重試）。
 // 現在：忙的時候記下「要再跑一次」，舊的那次抓到的報價也先畫到目前畫面上。
 let wlAgain = false;
+// 2026-10-22：看門狗。iPhone 會把主畫面 App 留在記憶體好幾天；某次更新在背景卡住（請求一直沒回）時，
+// wlBusy 永遠是 true，之後每次更新都被跳過 → 清單停在好幾天前（定錨停 10/16、我的持股停 10/19）。
+// 現在：更新超過 40 秒還沒結束就視為卡住、直接開新的一輪；卡住的那輪就算之後回來也不准再畫。
+let wlBusyAt = 0, wlRun = 0;
 async function refreshWatchlistQuotes(list = wlList) {
   wlList = list;
   if (!list.length) return;
-  if (wlBusy) { wlAgain = true; return; }
+  if (wlBusy && Date.now() - wlBusyAt < 40000) { wlAgain = true; return; }
+  if (wlBusy) console.warn('上一輪報價更新卡住超過 40 秒，強制重來');
   wlBusy = true;
+  wlBusyAt = Date.now();
+  const run = ++wlRun;
   try {
     let quotes = {};
     let failed = false;
@@ -652,6 +667,7 @@ async function refreshWatchlistQuotes(list = wlList) {
       failed = true;
       console.warn('live quote fetch failed', e);
     }
+    if (run !== wlRun) return;  // 這輪被看門狗判定卡住、已經有新的一輪了
     qlogPush(quotes, failed);
     if (wlList !== list) { if (!failed) await paintWatchlistQuotes(wlList, quotes, true); return; }
     // 即時報價這次失敗、但手機裡已有「今天」的報價 → 保留它（別用昨天收盤價蓋掉），標示更新失敗，20 秒後會再試。
@@ -664,8 +680,10 @@ async function refreshWatchlistQuotes(list = wlList) {
     await paintWatchlistQuotes(list, quotes, false);  // 失敗時會改顯示收盤價，標籤上附失敗原因
     if (failed && !/收盤價/.test($('#wl-updated').textContent)) paintQuoteTime({}, true);
   } finally {
-    wlBusy = false;
-    if (wlAgain) { wlAgain = false; refreshWatchlistQuotes(); }
+    if (run === wlRun) {
+      wlBusy = false;
+      if (wlAgain) { wlAgain = false; refreshWatchlistQuotes(); }
+    }
   }
 }
 
@@ -695,6 +713,20 @@ function paintQuoteTime(quotes, failed = false) {
   const lag = quoteLagMin(quotes);
   const lagTxt = lag != null && lag > 3 ? `（延遲 ${lag} 分）` : '';
   el.textContent = `報價時間 ${day}${q.time}${src}${lagTxt}${why || (twMarketOpen() ? '　盤中每 20 秒更新' : '')}`;
+  // 2026-10-22：報價比「最近一個交易日」還舊 → 紅字提醒＋點了可以重新整理（原本停在 10/16 也看不出異常）
+  const stale = q.date && q.date < expectedQuoteDay();
+  el.classList.toggle('stale', !!stale);
+  if (stale) el.textContent += '　⚠ 不是最新，點這裡重新整理';
+}
+// 現在應該看到哪一天的報價（YYYYMMDD）：平日 09:05 後（不是休市日）＝今天；否則＝全市場行情檔的最新交易日
+function expectedQuoteDay() {
+  const n = new Date(Date.now() + 8 * 3600e3), today = twToday();
+  const d = n.getUTCDay(), m = n.getUTCHours() * 60 + n.getUTCMinutes();
+  let closed = false;
+  try { closed = localStorage.getItem('tw_closed_day') === today; } catch (e) {}
+  if (d >= 1 && d <= 5 && m >= 560 && !closed) return today;  // 09:20 後（休市日 09:15 就會被記下來）
+  const mk = typeof Mk !== 'undefined' && Mk.cache.day && Mk.cache.day.data.date;
+  return mk ? mk.replace(/-/g, '') : '00000000';
 }
 
 // 報價更新紀錄（最近 30 次）：點清單上方的「報價時間」可以看，出問題時截圖就知道是哪一段壞
@@ -717,7 +749,12 @@ function openQuoteLog() {
     <div class="modal-title">報價更新紀錄（最近 30 次）</div>
     <div class="dim" style="margin-bottom:6px">時間｜清單｜結果｜最新成交時間｜拿到檔數｜各來源狀態</div>
     <div style="font-size:12px;line-height:1.6;max-height:60vh;overflow:auto">${log.map(r => `<div>${r.at}｜${r.g || '—'}｜${r.ok ? '✓' : '⚠ 失敗'}｜${r.newest}｜${r.n}｜${r.src}</div>`).join('') || '<div class="dim">還沒有紀錄</div>'}</div>
-    <button class="modal-btn" id="ql-close" style="text-align:center;margin-top:10px">關閉</button>`);
+    <button class="modal-btn" id="ql-reload" style="text-align:center;margin-top:10px">重新整理 App（清掉暫存報價、重新抓）</button>
+    <button class="modal-btn" id="ql-close" style="text-align:center">關閉</button>`);
+  $('#ql-reload').addEventListener('click', () => {
+    try { Object.keys(localStorage).filter(k => k.startsWith('bk_q_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    location.reload();
+  });
   $('#ql-close').addEventListener('click', closeModal);
 }
 
@@ -973,8 +1010,25 @@ async function loadKline(silent = false) {
   }
 }
 
+// 2026-10-22：手機儲存空間（localStorage，iPhone 約 5MB）整理。FinMind 快取每看一檔就多一份（法人 180 天一份就上百 KB），
+// 用久了會塞滿，之後清單、分頁、報價紀錄都寫不進去。開 App 時：FinMind 快取只留最近用到的 40 份、刪掉 2 天前的興櫃收盤價暫存。
+function pruneStorage() {
+  try {
+    const fm = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith('fmfb_')) { let t = 0; try { t = JSON.parse(localStorage.getItem(k)).t || 0; } catch (e) {} fm.push([k, t]); }
+      else if (k.startsWith('eclose_')) { try { if (Date.now() - JSON.parse(localStorage.getItem(k)).t > 2 * 86400e3) fm.push([k, -1]); } catch (e) {} }
+    }
+    fm.filter(x => x[1] === -1).forEach(([k]) => localStorage.removeItem(k));
+    const keep = fm.filter(x => x[1] !== -1).sort((a, b) => b[1] - a[1]);
+    keep.slice(40).forEach(([k]) => localStorage.removeItem(k));
+  } catch (e) { console.warn('pruneStorage', e); }
+}
+
 // ---- Event wiring ----
 document.addEventListener('DOMContentLoaded', () => {
+  pruneStorage();
   ensureStockIndex();
   // 訪客第一次用新版：清掉這台以前存的擁有者清單（之前清單是公開讀的）。擁有者填密碼後會從後端重新同步。
   if (!isOwner() && !localStorage.getItem('guest_v1')) { wipeOwnerLocal(); localStorage.setItem('guest_v1', '1'); }
@@ -999,8 +1053,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2026-10-08：每次回到 App（切回前景、從主畫面重開、視窗取得焦點）都立刻抓最新報價（不看離開多久）；
   // 幾個事件常會連續觸發，1.5 秒內只做一次。
   let lastResume = 0;
+  // 2026-10-22：在背景放超過 10 分鐘才回來 → 整頁重新載入（等於重開 App）。
+  // iPhone 主畫面 App 常常幾天都不真正重開，記憶體裡卡住的狀態會一直留著；重新載入也會順便換上新版。
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = Date.now(); }, true);
+  window.addEventListener('pagehide', () => { hiddenAt = hiddenAt || Date.now(); });
   const onResume = () => {
     if (document.hidden) return;
+    if (hiddenAt && Date.now() - hiddenAt > 10 * 60e3 && !$('#modal').classList.contains('active')) {
+      hiddenAt = 0;
+      location.reload();
+      return;
+    }
+    hiddenAt = 0;
     if (Date.now() - lastResume < 1500) return;
     lastResume = Date.now();
     if (homeActive()) refreshWatchlistQuotes();
@@ -1020,7 +1085,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('#btn-group-menu').addEventListener('click', openGroupMenu);
-  $('#wl-updated').addEventListener('click', openQuoteLog);
+  $('#wl-updated').addEventListener('click', () => {
+    if ($('#wl-updated').classList.contains('stale')) {  // 紅字「不是最新」：直接清掉暫存報價、整頁重新載入
+      try { Object.keys(localStorage).filter(k => k.startsWith('bk_q_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+      location.reload();
+      return;
+    }
+    openQuoteLog();
+  });
   paintScoreModeBtn();
   $('#wl-score-mode').addEventListener('click', () => {
     scoreMode = scoreMode === 'safe' ? 'aggr' : 'safe';

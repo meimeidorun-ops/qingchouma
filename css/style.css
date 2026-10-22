@@ -324,6 +324,7 @@ html, body {
 .guest-note[hidden] { display: none; }
 
 #wl-updated { cursor: pointer; }
+#wl-updated.stale { color: #ef5350; font-weight: 600; }
 
 .pf-ml-list { margin-top: 8px; border-top: 1px solid var(--border); }
 .pf-ml-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
