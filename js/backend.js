@@ -56,7 +56,7 @@ async function cnyesGet(path, ms = 6000) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
   try {
-    const j = await (await fetch(CNYES + path, { signal: ctl.signal })).json();
+    const j = await (await fetch(CNYES + path, { signal: ctl.signal, cache: 'no-store' })).json();  // 即時資料：不用任何快取
     if (j.statusCode !== 200) throw new Error('cnyes ' + (j.message || j.statusCode));
     return j.data;
   } finally {
@@ -359,7 +359,7 @@ const Backend = {
     const timed = (url, ms) => {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), ms);
-      return fetch(url, { signal: ctl.signal }).then(r => r.json()).finally(() => clearTimeout(timer));
+      return fetch(url, { signal: ctl.signal, cache: 'no-store' }).then(r => r.json()).finally(() => clearTimeout(timer));
     };
     const good = j => {
       const vals = j && j.status === 200 && j.data && !j.data.__error ? Object.values(j.data) : [];
