@@ -73,7 +73,12 @@ async function cnyesQuotes(stocks) {
   let fails = 0;
   await Promise.all(chunks.map(async c => {
     let data;
-    try { data = await cnyesGet('/v2/quote/quotes/' + c.map(cnyesSym).join(',')); } catch (e) { fails++; return; }
+    // 2026-10-28 盤中實測：鉅亨偶爾單次失敗 → 原本直接改用備援（證交所 MIS，鎖漲停股會顯示成昨收）。先隔 0.8 秒重試一次。
+    const path = '/v2/quote/quotes/' + c.map(cnyesSym).join(',');
+    try { data = await cnyesGet(path); } catch (e) {
+      await new Promise(r => setTimeout(r, 800));
+      try { data = await cnyesGet(path); } catch (e2) { fails++; return; }
+    }
     for (const d of data || []) {
       const id = d['200010'];
       if (!id || d['6'] == null) continue;
