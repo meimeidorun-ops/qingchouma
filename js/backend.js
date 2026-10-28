@@ -91,8 +91,15 @@ async function cnyesQuotes(stocks) {
     }
   }));
   if (fails && fails === chunks.length) throw new Error('cnyes 全部失敗');
+  // 2026-10-28 盤中實測：鉅亨不同伺服器給的快照新舊不一（同一分鐘內可能拿到 1～2 分鐘前的），畫面價格會來回跳。
+  // 每檔只接受「比上次新（或一樣）」的成交時間，舊的就沿用上次的。
+  for (const id in out) {
+    const prev = cnyesLast[id], q = out[id];
+    if (prev && prev.date + prev.time > q.date + q.time) out[id] = prev; else cnyesLast[id] = q;
+  }
   return out;
 }
+const cnyesLast = {};
 // 歷史 K：cnyes 回傳由新到舊的平行陣列 {t,o,h,l,c,v}；轉成由舊到新
 function cnyesRows(d) {
   const rows = [];
