@@ -72,17 +72,20 @@ async function cnyesQuotes(stocks) {
   // 2026-10-14：一次 50 檔分批抓，其中一批失敗不要拖垮全部（原本 Promise.all 一批錯就整個改走慢的備援）
   let fails = 0;
   await Promise.all(chunks.map(async c => {
-    let data;
-    // 2026-10-28 盤中實測：鉅亨偶爾單次失敗 → 原本直接改用備援（證交所 MIS，鎖漲停股會顯示成昨收）。先隔 0.8 秒重試一次。
     const path = '/v2/quote/quotes/' + c.map(cnyesSym).join(',');
-    try { data = await cnyesGet(path); } catch (e) {
+    // 2026-10-28 盤中實測：鉅亨後面好幾台伺服器的資料新舊不一（同一時間可能拿到 2～7 分鐘前的快照，加亂數參數也沒用）。
+    // 每批同時問兩次、每檔取成交時間較新的那份 → 大幅降低拿到舊快照的機會（多 0.1 秒內的流量）。
+    let res = (await Promise.allSettled([cnyesGet(path), cnyesGet(path)])).filter(r => r.status === 'fulfilled').map(r => r.value);
+    // 兩次都失敗（偶發）→ 隔 0.8 秒再試一次；原本直接改用備援（證交所 MIS，鎖漲停股會顯示成昨收）
+    if (!res.length) {
       await new Promise(r => setTimeout(r, 800));
-      try { data = await cnyesGet(path); } catch (e2) { fails++; return; }
+      try { res = [await cnyesGet(path)]; } catch (e2) { fails++; return; }
     }
-    for (const d of data || []) {
+    for (const data of res) for (const d of data || []) {
       const id = d['200010'];
       if (!id || d['6'] == null) continue;
       const t = twTime(d['200007']);
+      if (out[id] && out[id].date + out[id].time >= t.ymd + t.hms) continue;
       out[id] = {
         price: d['6'], prevClose: d['21'], change: d['11'], changePercent: d['56'],
         open: d['19'], high: d['12'], low: d['13'], vol: d['200013'],
