@@ -142,6 +142,13 @@ html, body {
 .chart-container.tall { height: 380px; }
 
 .legend-row { display: flex; gap: 14px; padding: 4px 16px 8px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
+.kl-info { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 2px 16px 6px; font-size: 12px; color: var(--text-dim); min-height: 34px; font-variant-numeric: tabular-nums; }
+.kl-info b { color: var(--text); font-weight: 600; }
+.kl-info b.up, .kl-info .up { color: #e6413c; }
+.kl-info b.down, .kl-info .down { color: #1fa363; }
+.kl-info .kli-date { color: var(--text); font-weight: 600; }
+.kl-info .kli-ma5 { color: #f2c744; }
+.kl-info .kli-ma20 { color: #7aa2f7; }
 .legend-row .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
 
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }

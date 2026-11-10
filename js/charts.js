@@ -30,6 +30,8 @@ function makeChart(container, opts = {}) {
     rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
     timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    // 手機：長按進入「十字線模式」，滑動是移動十字線（不是捲動圖），放開後點一下圖才離開
+    trackingMode: { exitMode: LightweightCharts.TrackingModeExitMode ? LightweightCharts.TrackingModeExitMode.OnNextTap : 1 },
     handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: false },
     width: container.clientWidth,
@@ -182,7 +184,45 @@ function renderKLine(container, priceRows, opts = {}) {
   setPaneHeights(chart, paneIdx - 2);
   if (opts.visibleBars) chart._window = opts.visibleBars;
   showAllBars(chart, priceRows.length);
+  if (opts.infoEl) klineInfo(chart, opts.infoEl, priceRows, { ma5, ma20, instRows, showInst, volUnit: opts.volUnit || '張', intraday, liveLast: opts.liveLast });
   return chart;
+}
+
+// 2026-11-10：K 線上方資訊列。手指長按 K 線（或滑鼠移上去）→ 顯示那一根的日期、開高低收、漲跌、量、MA、法人；
+// 放開後十字線留著，點一下圖才消失；沒選時顯示最新一根。
+function klineInfo(chart, el, rows, o) {
+  const idx = new Map(rows.map((r, i) => [String(r.date), i]));
+  const instBy = o.showInst && o.instRows.length ? aggregateInstitutionalByDate(o.instRows, 1000) : null;
+  const f = (v, d = 2) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
+  const when = t => {
+    if (typeof t === 'number') { const s = new Date((t + 28800) * 1000).toISOString(); return `${s.slice(5, 10).replace('-', '/')} ${s.slice(11, 16)}`; }
+    return String(t).slice(5).replace('-', '/');
+  };
+  const paint = i => {
+    const r = rows[i];
+    if (!r) { el.innerHTML = ''; return; }
+    const prev = i > 0 ? rows[i - 1].close : null;
+    const chg = prev ? r.close - prev : null, pct = prev ? chg / prev * 100 : null;
+    const isLive = o.liveLast && i === rows.length - 1;
+    const inst = instBy && !o.intraday ? instBy.get(r.date) : null;
+    const c = cls(chg);
+    el.innerHTML = `<span class="kli-date">${when(r.date)}${isLive ? ' <span class="dim">盤中</span>' : ''}</span>` +
+      `<span>開 <b class="${cls(prev ? r.open - prev : 0)}">${f(r.open)}</b></span>` +
+      `<span>高 <b class="${cls(prev ? r.max - prev : 0)}">${f(r.max)}</b></span>` +
+      `<span>低 <b class="${cls(prev ? r.min - prev : 0)}">${f(r.min)}</b></span>` +
+      `<span>${isLive ? '現價' : '收'} <b class="${c}">${f(r.close)}</b></span>` +
+      (chg != null ? `<span class="${c}">${chg > 0 ? '+' : ''}${f(chg)}（${pct > 0 ? '+' : ''}${f(pct)}%）</span>` : '') +
+      `<span>量 ${f(r.Trading_Volume / 1000, o.volUnit === '億' ? 0 : 0)} ${o.volUnit}</span>` +
+      (o.ma5[i] != null ? `<span class="kli-ma5">MA5 ${f(o.ma5[i])}</span>` : '') +
+      (o.ma20[i] != null ? `<span class="kli-ma20">MA20 ${f(o.ma20[i])}</span>` : '') +
+      (inst != null ? `<span>法人 <b class="${cls(inst)}">${inst > 0 ? '+' : ''}${f(inst, 0)}</b> ${o.volUnit === '億' ? '億' : '張'}</span>` : '');
+  };
+  paint(rows.length - 1);
+  chart.subscribeCrosshairMove(p => {
+    const i = p && p.time != null ? idx.get(String(p.time)) : undefined;
+    paint(i == null ? rows.length - 1 : i);
+  });
 }
 
 function renderInstitutional(container, rows, div = 1) {

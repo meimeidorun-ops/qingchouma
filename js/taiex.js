@@ -13,6 +13,7 @@ function ixPaintBars() {
   $$('#ix-view [data-r]').forEach(b => { b.classList.toggle('active', Number(b.dataset.r) === Ix.range); b.style.display = Ix.view === 'd' ? '' : 'none'; });
   $('#ix-layers').style.display = Ix.view === 'd' ? '' : 'none';
   $('#ix-legend').style.display = Ix.view === 'd' ? '' : 'none';
+  $('#ix-kl-info').style.display = Ix.view === 'd' ? '' : 'none';
   $('#ix-layers [data-layer="inst"]').classList.toggle('active', Ix.showInst);
   $$('#ix-layers [data-ind]').forEach(b => b.classList.toggle('active', b.dataset.ind === Ix.ind));
   $$('#ix-inst-who .range-btn').forEach(b => b.classList.toggle('active', b.dataset.w === Ix.who));
@@ -84,7 +85,7 @@ async function ixDrawMain() {
     box.style.height = `${260 + extra * 90}px`;
     let range = null;
     if (Ix.charts.k && Ix.charts.k._ixKey === `${mkt}_${Ix.range}`) { try { range = Ix.charts.k.timeScale().getVisibleLogicalRange(); } catch (e) {} }
-    Ix.charts.k = renderKLine(box, rows, { instRows: Ix.showInst ? ixInstRows(m, 'all', 1000) : [], showInst: Ix.showInst, indicator: Ix.ind || null });
+    Ix.charts.k = renderKLine(box, rows, { instRows: Ix.showInst ? ixInstRows(m, 'all', 1000) : [], showInst: Ix.showInst, indicator: Ix.ind || null, infoEl: $('#ix-kl-info'), volUnit: '億', liveLast: twMarketOpen() });
     Ix.charts.k._ixKey = `${mkt}_${Ix.range}`;
     if (range) { try { Ix.charts.k.timeScale().setVisibleLogicalRange(range); } catch (e) {} }
     $('#ix-note').textContent = Ix.showInst && !m ? '三大法人資料暫時抓不到' : '';

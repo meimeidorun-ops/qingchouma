@@ -113,7 +113,9 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
         <div class="legend-row">
           <span><span class="dot" style="background:#f2c744"></span>MA5</span>
           <span><span class="dot" style="background:#7aa2f7"></span>MA20</span>
+          <span class="dim">長按 K 線可左右滑動看當天價格</span>
         </div>
+        <div class="kl-info" id="kl-info"></div>
         <div class="chart-container tall" id="chart-kline"></div>
       </div>
 
@@ -345,6 +347,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
         <span><span class="dot" style="background:#7aa2f7"></span>MA20</span>
         <span class="dim">量＝成交值（億）；法人＝三大法人合計（億）</span>
       </div>
+      <div class="kl-info" id="ix-kl-info"></div>
       <div class="chart-container tall" id="ix-chart"></div>
       <p class="hint" id="ix-note" style="padding:4px 16px 0"></p>
 

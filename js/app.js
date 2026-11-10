@@ -950,6 +950,8 @@ function redrawKline(keepRange = false) {
     indicator: klineOpts.indicator,
     intraday: klineInterval !== '1d',
     visibleBars: { '60m': 100, '5m': 160 }[klineInterval],
+    infoEl: $('#kl-info'),
+    liveLast: klineInterval === '1d' && twMarketOpen(),
   });
   if (range && charts.kline) {
     try {
