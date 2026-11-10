@@ -166,9 +166,12 @@ async function paintIndexBar() {
 // ---------------------------------------------------------------- 📊 全市場排行
 const Rank = { cat: localStorage.getItem('rk_cat') || 'up', dir: localStorage.getItem('rk_dir') || 'buy', n: Number(localStorage.getItem('rk_n') || 1),
   noEtf: localStorage.getItem('rk_noetf') === '1', liq: localStorage.getItem('rk_liq') !== '0', safe: false, seq: 0 };
-const RK_CATS = [['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['margin', '融資'], ['score', '評分']];
+const RK_CATS = [['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['score', '評分']];
 const rkIsPrice = () => ['up', 'down', 'money'].includes(Rank.cat);
-const rkIsInst = () => ['f', 't', 'd'].includes(Rank.cat);
+const rkIsInst = () => ['f', 't', 'd', 'ft', 'fta'].includes(Rank.cat);
+// 2026-11-10：同步買賣＝每一方「各自」都是買超（或賣超）才算；三方量體差很多（外資常是投信的好幾倍），
+// 所以不看合計多少，而是每一方方向一致、再依合計金額排序，各方張數分開列出。
+const RK_GROUP = { f: [0], t: [1], d: [2], ft: [0, 1], fta: [0, 1, 2] };
 const rkIsEtf = id => id.startsWith('00');
 
 function paintRankBars() {
@@ -176,7 +179,8 @@ function paintRankBars() {
   const btn = (attr, v, lbl, on) => `<button class="range-btn${on ? ' active' : ''}" data-${attr}="${v}">${lbl}</button>`;
   let sub = '';
   if (rkIsInst()) {
-    sub = [['buy', '買超'], ['sell', '賣超'], ['streakBuy', '連買'], ['streakSell', '連賣']].map(([v, l]) => btn('dir', v, l, Rank.dir === v)).join('') +
+    const same = RK_GROUP[Rank.cat].length > 1;
+    sub = [['buy', same ? '同買' : '買超'], ['sell', same ? '同賣' : '賣超'], ['streakBuy', same ? '同步連買' : '連買'], ['streakSell', same ? '同步連賣' : '連賣']].map(([v, l]) => btn('dir', v, l, Rank.dir === v)).join('') +
       (Rank.dir.startsWith('streak') ? '' : '<span style="width:8px"></span>' + [1, 5, 10, 20].map(n => btn('n', n, `${n}日`, Rank.n === n)).join(''));
   } else if (Rank.cat === 'margin') {
     sub = [['buy', '增加'], ['sell', '減少']].map(([v, l]) => btn('dir', v, l, (Rank.dir === 'sell') === (v === 'sell'))).join('') +
@@ -224,26 +228,38 @@ async function openRank() {
       note = pxNote;
     } else if (rkIsInst()) {
       const d = await Mk.load('inst');
-      const k = { f: 0, t: 1, d: 2 }[Rank.cat], L = d.days.length;
+      const ks = RK_GROUP[Rank.cat], same = ks.length > 1, L = d.days.length;
       const streak = Rank.dir.startsWith('streak'), sgn = Rank.dir === 'buy' || Rank.dir === 'streakBuy' ? 1 : -1;
+      const minRun = same ? 2 : 3;
+      const WHO = ['外', '投', '自'];
       for (const id in d.s) {
         if (!base(id) || !day.has(id)) continue;
-        const a = d.s[id][k], c = day.get(id).close || 0;
+        const c = day.get(id).close || 0;
+        const each = ks.map(k => d.s[id][k] || []);
         if (streak) {
-          let n = 0, tot = 0;
-          while (n < L && a[L - 1 - n] * sgn > 0) { tot += a[L - 1 - n]; n++; }
-          if (n >= 3) rows.push({ id, v: n, v2: Math.abs(tot) * c, lots: tot });
+          // 從最新一天往回數：那一天「每一方」都同方向才算一天
+          let n = 0;
+          const tots = ks.map(() => 0);
+          while (n < L && each.every(a => a[L - 1 - n] * sgn > 0)) { each.forEach((a, j) => { tots[j] += a[L - 1 - n]; }); n++; }
+          const tot = tots.reduce((s, x) => s + x, 0);
+          if (n >= minRun) rows.push({ id, v: n, v2: Math.abs(tot) * c, lots: tot, tots });
         } else {
-          let tot = 0;
-          for (let i = Math.max(0, L - Rank.n); i < L; i++) tot += a[i];
-          if (tot * sgn > 0) rows.push({ id, v: Math.abs(tot) * c, v2: 0, lots: tot });
+          const tots = each.map(a => { let s = 0; for (let i = Math.max(0, L - Rank.n); i < L; i++) s += a[i] || 0; return s; });
+          if (tots.every(x => x * sgn > 0)) {
+            const tot = tots.reduce((s, x) => s + x, 0);
+            rows.push({ id, v: Math.abs(tot) * c, v2: 0, lots: tot, tots });
+          }
         }
       }
       rows.sort((a, b) => b.v - a.v || b.v2 - a.v2);
+      const word = sgn > 0 ? '買' : '賣';
+      const lotsTxt = r => same ? ks.map((k, j) => `${WHO[k]} ${r.tots[j] > 0 ? '+' : ''}${numFmt(r.tots[j])}`).join('｜') + ' 張'
+        : `${r.lots > 0 ? '+' : ''}${numFmt(r.lots)} 張`;
       rows = rows.map(r => ({ id: r.id, name: day.get(r.id).name, px: px.get(r.id) || day.get(r.id), cls: sgn > 0 ? 'up' : 'down',
-        main: streak ? `連${sgn > 0 ? '買' : '賣'} ${r.v} 天` : `${sgn > 0 ? '+' : '-'}${numFmt(r.v / 1e5, 1)} 億`,
-        sub: `${streak ? '合計 ' : ''}${r.lots > 0 ? '+' : ''}${numFmt(r.lots)} 張${streak ? `（約 ${numFmt(r.v2 / 1e5, 1)} 億）` : ''}` }));
-      note = `${{ f: '外資', t: '投信', d: '自營商' }[Rank.cat]}｜資料日 ${d.days[L - 1].slice(5)}${streak ? '（連續 3 天以上）' : `，近 ${Math.min(Rank.n, L)} 日，依金額排序`}｜更新 ${d.updated.slice(5)}`;
+        main: streak ? `${same ? '同步' : ''}連${word} ${r.v} 天` : `${sgn > 0 ? '+' : '-'}${numFmt(r.v / 1e5, 1)} 億`,
+        sub: `${streak ? '合計 ' : ''}${lotsTxt(r)}${streak ? `（約 ${numFmt(r.v2 / 1e5, 1)} 億）` : ''}` }));
+      const who = { f: '外資', t: '投信', d: '自營商', ft: '外資＋投信同步', fta: '三大法人同步' }[Rank.cat];
+      note = `${who}${same ? `（每一方都${word}超才列入，依合計金額排序）` : ''}｜資料日 ${d.days[L - 1].slice(5)}${streak ? `（連續 ${minRun} 天以上）` : `，近 ${Math.min(Rank.n, L)} 日${same ? '' : '，依金額排序'}`}｜更新 ${d.updated.slice(5)}`;
     } else if (Rank.cat === 'margin') {
       const d = await Mk.load('margin');
       const L = d.days.length, back = Math.min(Rank.n, L - 1), sgn = Rank.dir === 'sell' ? -1 : 1;
