@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '66';
+window.APP_V = '67';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -38,6 +38,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
     <div class="search-results" id="search-results"></div>
 
     <div class="idx-bar" id="idx-bar" hidden></div>
+    <div class="temp-bar" id="temp-bar" hidden></div>
     <div class="group-bar">
       <div class="group-tabs" id="group-tabs"></div>
       <button class="icon-btn" id="btn-group-menu" aria-label="管理清單">⋯</button>
@@ -72,6 +73,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
       </div>
     </div>
     <div class="dt-score" id="dt-score" hidden></div>
+    <div class="dt-score dt-temp" id="dt-temp" hidden></div>
 
     <div class="tabbar">
       <button class="tab-btn active" data-tab="rt">即時</button>
@@ -323,6 +325,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
       <div class="spacer"></div>
     </div>
     <div class="pf-scroll">
+      <div id="ix-temp"></div>
       <div class="range-bar" id="ix-mkt">
         <button class="range-btn active" data-m="tse">加權指數</button>
         <button class="range-btn" data-m="otc">櫃買指數</button>
@@ -438,7 +441,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>

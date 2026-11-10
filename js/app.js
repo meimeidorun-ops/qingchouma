@@ -392,6 +392,7 @@ async function refreshHeaderQuote() {
 async function paintDetailScore(stock) {
   const box = $('#dt-score');
   box.hidden = true;
+  if (typeof paintDetailTemp === 'function') paintDetailTemp(stock);
   let it = scoreMap.get(stock.stock_id);
   if (!it) {
     try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) {}
@@ -630,11 +631,13 @@ function openScoreDetailV2(id, it) {
     <div class="sd-v2">${row('營收創新高', P.revHigh, high)}${row('營收轉折', P.turn, turn)}${revNote}${row('接近一年高點', P.nearHigh, near)}${row('估值', P.peRank, val)}${it.safeMode ? row('低波動', P.lowVol, vol) : ''}</div>
     <div class="dim" style="margin-top:6px">${it.safeMode ? `穩健版（5 項，含低波動）；積極版分數 ${it.scoreAggr ?? '—'}。` : `積極版（4 項）${X.scoreSafe != null ? `；穩健版分數 ${X.scoreSafe}` : ''}。`}清單上方「評分：積極／穩健」可以切換。</div>
     <div class="sd-sigs">${(it.signals || []).map(s => `<div class="sd-sig ${s.level}">${s.level === 'warn' ? '⚠' : '✓'} ${s.text}</div>`).join('') || '<div class="dim">目前沒有特別訊號</div>'}</div>
+    ${typeof mkScoreHistSlot === 'function' ? mkScoreHistSlot() : ''}
     <div class="dim" style="margin-top:8px">新版評分（全市場 2020～2026 驗證）：每項是${X.basis === 'fullmarket' ? `在全市場（成交金額前 ${X.popN || 350} 大普通股）的排名百分位` : '在你的自選清單裡排名百分位'}（100＝最好），分數＝平均；缺資料的項目不算。規則計算，僅供參考。${it.scoreOld != null ? `舊版分數 ${it.scoreOld}。` : ''}</div>
     <button class="modal-btn" id="sd-open" style="text-align:center;margin-top:12px">打開個股頁 ›</button>
     <button class="modal-btn" id="sd-close" style="text-align:center">關閉</button>`);
   $('#sd-close').addEventListener('click', closeModal);
   $('#sd-open').addEventListener('click', () => { closeModal(); openStock({ stock_id: id, stock_name: it.name }); });
+  if (typeof mkFillScoreHist === 'function') mkFillScoreHist(it.score, !!it.safeMode);
 }
 
 // 首頁報價更新：盤中每 20 秒一次、從背景切回 App 時立刻一次（只更新數字，不重畫清單）。

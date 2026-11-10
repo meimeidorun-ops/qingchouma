@@ -142,6 +142,45 @@ html, body {
 .chart-container.tall { height: 380px; }
 
 .legend-row { display: flex; gap: 14px; padding: 4px 16px 8px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
+/* 盤勢溫度（2026-11-10） */
+.temp-bar { display: flex; align-items: center; gap: 4px; padding: 6px 16px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.temp-bar[hidden] { display: none; }
+.temp-bar .tb-more, .dt-temp .dt-score-more { margin-left: auto; color: var(--text-dim); font-size: 12px; }
+.tb-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+.dt-temp { font-size: 13px; }
+.t-head { display: flex; align-items: baseline; gap: 10px; padding: 0 16px 4px; }
+.t-head b { font-size: 34px; line-height: 1; }
+.t-head span { font-size: 16px; font-weight: 600; }
+.tg-bar { position: relative; height: 10px; border-radius: 5px; margin-top: 8px; }
+.tg-fill { position: absolute; inset: 0; border-radius: 5px; background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 25%, #a3a3a3 50%, #f59e0b 75%, #ef4444 100%); opacity: 0.85; }
+.tg-pin { position: absolute; top: -4px; width: 4px; height: 18px; margin-left: -2px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.5); }
+.tg-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+.t-parts { padding: 8px 16px 4px; }
+.tp-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 6px; }
+.tp-lbl { width: 72px; flex-shrink: 0; }
+.tp-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--border); }
+.tp-bar span { display: block; height: 6px; border-radius: 3px; }
+.tp-val { width: 28px; text-align: right; font-variant-numeric: tabular-nums; }
+.tp-note { font-size: 11px; color: var(--text-dim); padding-left: 80px; }
+.t-stats { padding: 6px 12px 0; }
+.t-say { font-size: 13px; line-height: 1.6; padding: 6px 4px 8px; }
+.t-wrap { overflow-x: auto; }
+.t-tbl td, .t-tbl th { padding: 6px 4px; font-size: 12px; }
+.t-tbl th { line-height: 1.25; }
+.t-tbl tr.on td { background: rgba(242,199,68,0.12); }
+.t-tbl td.up { color: #e6413c; } .t-tbl td.down { color: #1fa363; }
+.tdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.sc-hist { margin-top: 12px; }
+.sc-hist:empty { display: none; }
+.sc-hist-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.sc-hist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sc-hist-grid > div { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; font-size: 12px; }
+.sc-hist-grid b { font-size: 17px; margin: 1px 0; }
+.sc-hist-grid b.up { color: #e6413c; } .sc-hist-grid b.down { color: #1fa363; }
+.sc-hist-more { margin-top: 8px; font-size: 12px; }
+.sc-hist-more summary { cursor: pointer; color: var(--text-dim); }
+.sc-hist-more tr.on td { background: rgba(242,199,68,0.12); }
+.sc-hist-more td.up { color: #e6413c; } .sc-hist-more td.down { color: #1fa363; }
 .kl-info { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 2px 16px 6px; font-size: 12px; color: var(--text-dim); min-height: 34px; font-variant-numeric: tabular-nums; }
 .kl-info b { color: var(--text); font-weight: 600; }
 .kl-info b.up, .kl-info .up { color: #e6413c; }

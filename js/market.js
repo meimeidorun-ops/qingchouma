@@ -142,10 +142,42 @@ async function mkOpenScore(id, name) {
     <div style="margin:6px 0 12px">積極版 <b class="sc-badge has ${scoreClass(it[0])}">${it[0] ?? '—'}</b>　穩健版 <b class="sc-badge has ${scoreClass(it[1])}">${it[1] ?? '—'}</b></div>
     ${MK_PARTS.map(([lbl, i]) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px"><span>${lbl}</span><span>${bar(it[i])}</span></div>`).join('')}
     <div style="padding:6px 0;font-size:14px;display:flex;justify-content:space-between"><span>近四季本益比</span><span>${it[7] == null ? '—（虧損或無資料）' : it[7] + ' 倍'}</span></div>
+    ${mkScoreHistSlot()}
     <p class="hint" style="margin-top:10px">每一項＝在全市場成交金額前 ${d.popN} 大普通股裡的百分位（0～100，越高越好）。積極版＝前四項平均；穩健版再加低波動。更新 ${d.asOf.slice(5)}。規則計算，非投資建議。</p>
     <button class="save" id="mk-sc-close" style="width:100%;margin-top:6px">關閉</button>`;
   $('#modal').classList.add('active');
   $('#mk-sc-close').onclick = closeModal;
+  const safe = localStorage.getItem('score_mode') === 'safe';
+  mkFillScoreHist(safe ? it[1] : it[0], safe);
+}
+
+// 2026-11-10：分數細項裡的「歷史上同分數區間的成績」（mk/score_stats.json，Agent backtest/score_buckets.py 產生）
+function mkScoreHistSlot() { return '<div id="sc-hist" class="sc-hist"></div>'; }
+async function mkFillScoreHist(score, safe) {
+  const box = $('#sc-hist');
+  if (!box || score == null) return;
+  try {
+    const d = await Mk.load('score_stats');
+    const m = d.modes[safe ? 'safe' : 'aggr'];
+    const b = m.buckets.find(x => score >= x.lo && score <= x.hi);
+    if (!b || !b['3']) return;
+    const s1 = b['1'] || {}, s3 = b['3'];
+    const sg = v => `${v > 0 ? '+' : ''}${v}%`;
+    const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
+    const rowsAll = m.buckets.filter(x => x['3']).map(x => `<tr${x === b ? ' class="on"' : ''}><td>${x.lo}～${x.hi}</td><td class="${cls(x['3'].avg)}">${sg(x['3'].avg)}</td><td>${x['3'].up}%</td><td>${x['3'].beat}%</td><td>${x['3'].crash}%</td></tr>`).join('');
+    box.innerHTML = `<div class="sc-hist-title">📈 歷史上 ${b.lo}～${b.hi} 分的股票（${safe ? '穩健' : '積極'}版）</div>
+      <div class="sc-hist-grid">
+        <div><span class="dim">3 個月後平均</span><b class="${cls(s3.avg)}">${sg(s3.avg)}</b><span class="dim">中位數 ${sg(s3.med)}</span></div>
+        <div><span class="dim">3 個月後上漲機率</span><b>${s3.up}%</b><span class="dim">1 個月 ${s1.up ?? '—'}%</span></div>
+        <div><span class="dim">贏過同期市場平均</span><b>${s3.beat}%</b><span class="dim">平均多 ${sg(s3.exAvg)}</span></div>
+        <div><span class="dim">3 個月跌超過 20%</span><b>${s3.crash}%</b><span class="dim">漲超過 30%：${s3.boom}%</span></div>
+      </div>
+      <details class="sc-hist-more"><summary>看各分數區間比較</summary>
+        <table class="data-table compact"><thead><tr><th>分數</th><th>3月平均</th><th>上漲</th><th>贏大盤</th><th>跌>20%</th></tr></thead><tbody>${rowsAll}</tbody></table>
+        <div class="dim">全部股票平均：3 個月 ${sg(m.all['3'].avg)}、上漲機率 ${m.all['3'].up}%。</div>
+      </details>
+      <div class="dim" style="margin-top:6px">${d.from.slice(0, 7)}～${d.to.slice(0, 7)} 每個月用「當時」的資料算分數，再看之後的實際報酬（${s3.n.toLocaleString()} 筆）。不含手續費、股利；過去成績不代表未來，個股差異很大。</div>`;
+  } catch (e) { /* 統計檔抓不到就不顯示 */ }
 }
 
 // ---------------------------------------------------------------- 首頁：大盤指數（加權、櫃買），盤中 20 秒更新
