@@ -3,7 +3,8 @@
 const SCR_GROUPS = [
   ['籌碼', [
     ['fbuy3', '外資連買 3 天↑'], ['tbuy3', '投信連買 3 天↑'], ['ft5', '土洋同買（5 日）'], ['inst5', '三大法人 5 日買超'],
-    ['tfirst', '投信剛開始買'], ['mgdn5', '融資 5 日減少'], ['fsell3', '外資連賣 3 天↑'], ['mgup5', '融資 5 日增 10%↑'],
+    ['tfirst', '投信剛開始買'], ['mgdn5', '融資 5 日減少'], ['sbldn5', '借券 5 日回補'], ['lowdt', '當沖占比 <30%'],
+    ['fsell3', '外資連賣 3 天↑'], ['mgup5', '融資 5 日增 10%↑'], ['sblup5', '借券 5 日增加'],
   ]],
   ['技術', [
     ['up', '今天上漲'], ['ma60', '站上季線'], ['high60', '創 60 日新高'], ['up5', '5 日上漲'],
@@ -30,7 +31,8 @@ function scrPanelHtml() {
 }
 
 async function scrRows(day, px) {
-  const [inst, mg, sc, tp] = await Promise.all(['inst', 'margin', 'scores', 'temp'].map(n => Mk.load(n).catch(() => null)));
+  const [inst, mg, sc, tp, dtd] = await Promise.all(['inst', 'margin', 'scores', 'temp', 'dt'].map(n => Mk.load(n).catch(() => null)));
+  const DL = dtd ? dtd.days.length : 0;
   const on = Scr.on, L = inst ? inst.days.length : 0, ML = mg ? mg.days.length : 0;
   const run = (a, sgn) => { let n = 0; while (a && n < a.length && a[a.length - 1 - n] * sgn > 0) n++; return n; };
   const sum = (a, n) => { let s = 0; if (a) for (let i = Math.max(0, a.length - n); i < a.length; i++) s += a[i] || 0; return s; };
@@ -61,6 +63,14 @@ async function scrRows(day, px) {
       const chg = (M[ML - 1] - M[ML - 6]) / M[ML - 6];
       if (need('mgdn5') && !(chg < 0)) continue;
       if (need('mgup5') && !(chg >= 0.1)) continue;
+    }
+    const D = dtd && dtd.s[id];  // [當沖占比%[], 借券餘額[], 借券賣出[]]
+    if (need('lowdt') && !(D && D[0][DL - 1] != null && D[0][DL - 1] < 30)) continue;
+    if (need('sbldn5') || need('sblup5')) {
+      const b0 = D && D[1][DL - 1], b5 = D && D[1][DL - 6];
+      if (b0 == null || b5 == null || b5 < 100) continue;
+      if (need('sbldn5') && !(b0 < b5)) continue;
+      if (need('sblup5') && !(b0 > b5)) continue;
     }
     const T = tp && tp.stk.s[id];  // [溫度, 60日乖離%, 20日漲跌%, RSI, 區間位置%]
     if ((need('ma60') || need('high60') || need('rsiLow') || need('notHot') || need('cold')) && !T) continue;
@@ -100,7 +110,7 @@ $('#rk-list').addEventListener('click', e => {
     if (Scr.on.has(k)) Scr.on.delete(k); else {
       Scr.on.add(k);
       // 互斥的條件
-      const ex = { tse: 'otc', otc: 'tse', liq: 'liq5', liq5: 'liq', fbuy3: 'fsell3', fsell3: 'fbuy3', mgdn5: 'mgup5', mgup5: 'mgdn5', notHot: 'cold', cold: 'notHot' }[k];
+      const ex = { tse: 'otc', otc: 'tse', liq: 'liq5', liq5: 'liq', fbuy3: 'fsell3', fsell3: 'fbuy3', mgdn5: 'mgup5', mgup5: 'mgdn5', notHot: 'cold', cold: 'notHot', sbldn5: 'sblup5', sblup5: 'sbldn5' }[k];
       if (ex) Scr.on.delete(ex);
     }
   } else if (b.dataset.scrsort) Scr.sort = b.dataset.scrsort;

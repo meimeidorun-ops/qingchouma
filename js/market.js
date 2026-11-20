@@ -198,7 +198,7 @@ async function paintIndexBar() {
 // ---------------------------------------------------------------- 📊 全市場排行
 const Rank = { cat: localStorage.getItem('rk_cat') || 'up', dir: localStorage.getItem('rk_dir') || 'buy', n: Number(localStorage.getItem('rk_n') || 1),
   noEtf: localStorage.getItem('rk_noetf') === '1', liq: localStorage.getItem('rk_liq') !== '0', safe: false, seq: 0 };
-const RK_CATS = [['screen', '🔎選股'], ['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
+const RK_CATS = [['screen', '🔎選股'], ['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['dt', '當沖'], ['sbl', '借券'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
 const RK_SEC = [['chg', '漲跌幅'], ['money', '成交值'], ['f', '外資買超'], ['t', '投信買超']];
 const RK_ETF = [['prem', '溢價'], ['disc', '折價'], ['in', '資金流入'], ['out', '資金流出'], ['size', '規模'], ['in5', '5日流入'], ['out5', '5日流出']];
 const rkIsPrice = () => ['up', 'down', 'money'].includes(Rank.cat);
@@ -221,6 +221,12 @@ function paintRankBars() {
       '<span style="width:8px"></span>' + [1, 5, 10, 20].map(n => btn('n', n, `${n}日`, Rank.n === n)).join('');
   } else if (Rank.cat === 'score') {
     sub = btn('safe', '0', '積極版', !Rank.safe) + btn('safe', '1', '穩健版', Rank.safe);
+  } else if (Rank.cat === 'dt') {
+    if (!['hi', 'lo', 'jump'].includes(Rank.dtk)) Rank.dtk = 'hi';
+    sub = [['hi', '占比最高'], ['lo', '占比最低'], ['jump', '比 20 日均暴增']].map(([v, l]) => btn('dtk', v, l, Rank.dtk === v)).join('');
+  } else if (Rank.cat === 'sbl') {
+    if (!['up5', 'dn5', 'sell'].includes(Rank.sblk)) Rank.sblk = 'up5';
+    sub = [['up5', '5日餘額增加'], ['dn5', '5日回補（減少）'], ['sell', '今天借券賣出']].map(([v, l]) => btn('sblk', v, l, Rank.sblk === v)).join('');
   } else if (Rank.cat === 'etf') {
     if (!RK_ETF.some(([v]) => v === Rank.etf)) Rank.etf = 'prem';
     sub = RK_ETF.map(([v, l]) => btn('etf', v, l, Rank.etf === v)).join('');
@@ -228,7 +234,7 @@ function paintRankBars() {
     if (!RK_SEC.some(([v]) => v === Rank.sec)) Rank.sec = 'chg';
     sub = (Rank.secCode ? btn('secback', '1', '‹ 全部類股', false) : '') + RK_SEC.map(([v, l]) => btn('sec', v, l, Rank.sec === v)).join('');
   }
-  if (!['score', 'etf', 'sector', 'screen'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
+  if (!['score', 'etf', 'sector', 'screen', 'dt', 'sbl'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
   $('#rk-sub').innerHTML = sub;
 }
 
@@ -313,6 +319,42 @@ async function openRank() {
       rows = rows.map(r => ({ id: r.id, name: day.get(r.id).name, px: px.get(r.id) || day.get(r.id), cls: sgn > 0 ? 'up' : 'down', main: pctFmt(r.v, 1),
         sub: `${r.lots > 0 ? '+' : ''}${numFmt(r.lots)} 張｜餘額 ${numFmt(r.bal)} 張` }));
       note = `融資餘額增減%｜資料日 ${d.days[L - 1].slice(5)}，近 ${back} 日（餘額 ≥500 張）｜更新 ${d.updated.slice(5)}`;
+    } else if (Rank.cat === 'dt' || Rank.cat === 'sbl') {
+      // 當沖占比／借券賣出：mk/dt.json（近 20 個交易日）。只排普通股、成交值 ≥1 億（當沖）
+      const d = await Mk.load('dt');
+      const L = d.days.length;
+      for (const [id, s] of Object.entries(d.s)) {
+        if (!/^[1-9]\d{3}$/.test(id) || !day.has(id)) continue;
+        const p = px.get(id) || day.get(id);
+        if (Rank.cat === 'dt') {
+          const r = s[0][L - 1];
+          if (r == null || !(day.get(id).money >= 100)) continue;
+          const prev = s[0].slice(0, L - 1).filter(x => x != null);
+          const avg = prev.length ? prev.reduce((a, b) => a + b, 0) / prev.length : null;
+          const v = Rank.dtk === 'hi' ? r : Rank.dtk === 'lo' ? -r : (avg ? r - avg : null);
+          if (v == null) continue;
+          rows.push({ id, name: day.get(id).name, px: p, v, cls: r >= 50 ? 'up' : 'flat', main: `當沖 ${r}%`,
+            sub: `20 日平均 ${avg == null ? '—' : avg.toFixed(1)}%｜成交 ${numFmt(day.get(id).money / 100, 1)} 億` });
+        } else {
+          const b = s[1], b0 = b[L - 1], b5 = b[L - 6];
+          if (Rank.sblk === 'sell') {
+            const x = s[2][L - 1];
+            if (!x) continue;
+            rows.push({ id, name: day.get(id).name, px: p, v: x * (p.close || 0), cls: 'down', main: `${numFmt(x)} 張`,
+              sub: `約 ${numFmt(x * (p.close || 0) / 1e5, 1)} 億｜餘額 ${numFmt(b0)} 張` });
+          } else {
+            if (b0 == null || b5 == null || b5 < 100) continue;
+            const chg = b0 - b5;
+            if ((Rank.sblk === 'up5') !== (chg > 0) || chg === 0) continue;
+            rows.push({ id, name: day.get(id).name, px: p, v: Math.abs(chg) * (p.close || 0), cls: chg > 0 ? 'down' : 'up',
+              main: `${chg > 0 ? '+' : ''}${numFmt(chg)} 張`, sub: `${chg > 0 ? '+' : ''}${(chg / b5 * 100).toFixed(1)}%｜約 ${numFmt(Math.abs(chg) * (p.close || 0) / 1e5, 1)} 億｜餘額 ${numFmt(b0)} 張` });
+          }
+        }
+      }
+      rows.sort((a, b) => b.v - a.v);
+      const mk = d.mkt.tse[L - 1], mo = d.mkt.otc[L - 1];
+      note = Rank.cat === 'dt' ? `當沖占比｜${d.days[L - 1].slice(5)}｜大盤 上市 ${mk ?? '—'}%、上櫃 ${mo ?? '—'}%｜成交值 ≥1 億`
+        : `借券賣出｜${d.days[L - 1].slice(5)}｜依金額排序（借券餘額增加＝空方部位變大）`;
     } else if (Rank.cat === 'screen') {
       ({ rows, note } = await scrRows(day, px));
       note += `｜價格 ${pxNote}`;
@@ -452,6 +494,8 @@ $('#rk-sub').addEventListener('click', e => {
   else if (ds.safe) Rank.safe = ds.safe === '1';
   else if (ds.etf) Rank.etf = ds.etf;
   else if (ds.sec) Rank.sec = ds.sec;
+  else if (ds.dtk) Rank.dtk = ds.dtk;
+  else if (ds.sblk) Rank.sblk = ds.sblk;
   else if (ds.secback) Rank.secCode = null;
   else if (ds.toggle === 'noetf') { Rank.noEtf = !Rank.noEtf; localStorage.setItem('rk_noetf', Rank.noEtf ? '1' : '0'); }
   else if (ds.toggle === 'liq') { Rank.liq = !Rank.liq; localStorage.setItem('rk_liq', Rank.liq ? '1' : '0'); }

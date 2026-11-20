@@ -153,6 +153,45 @@ async function loadMargin() {
   } catch (e) {
     if (tabLive('margin', tk, stock)) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
+  loadDtSbl(stock, tk);
+}
+
+// 當沖占比、借券賣出（2026-11-21）：mk/dt.json（Agent chip_extra.py，近 20 個交易日）
+async function loadDtSbl(stock, tk) {
+  const box = $('#dt-sbl');
+  if (!box) return;
+  box.innerHTML = '';
+  try {
+    const d = await Mk.load('dt');
+    if (!tabLive('margin', tk, stock)) return;
+    const s = d.s[stock.stock_id];
+    if (!s) { box.innerHTML = '<div class="section-label">當沖・借券</div><div class="empty-hint" style="padding:12px">這檔沒有當沖或借券資料</div>'; return; }
+    const [ratio, bal, sell] = s, L = d.days.length;
+    const last = i => { for (let k = L - 1; k >= 0; k--) if (i[k] != null) return [i[k], k]; return [null, -1]; };
+    const [r0] = last(ratio), [b0, bi] = last(bal);
+    const b5 = bi >= 5 ? bal[bi - 5] : null;
+    const mk = d.mkt[(typeof marketFor === 'function' && marketFor(stock.stock_id) === 'TWO') ? 'otc' : 'tse'] || [];
+    const avg = arr => { const v = arr.filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const r20 = avg(ratio);
+    box.innerHTML = `<div class="section-label">當沖・借券（近 ${L} 個交易日）</div>
+      <div class="branch-summary">
+        <span>當沖占比 <b class="${r0 >= 50 ? 'up' : ''}">${r0 == null ? '—' : r0 + '%'}</b>（20 日平均 ${r20 == null ? '—' : r20.toFixed(1) + '%'}，大盤 ${mk[mk.length - 1] ?? '—'}%）</span>
+        <span>借券賣出餘額 <b>${b0 == null ? '—' : numFmt(b0)}</b> 張${b5 != null && b0 != null ? `（5 日 <b class="${signClass(b0 - b5)}">${b0 - b5 >= 0 ? '+' : ''}${numFmt(b0 - b5)}</b>）` : ''}</span>
+      </div>
+      <div class="chart-container" id="chart-dtsbl" style="height:200px"></div>
+      <div class="legend-row"><span><span class="dot" style="background:#f59e0b"></span>當沖占比 %（左軸）</span><span><span class="dot" style="background:#7aa2f7"></span>借券賣出餘額 張（右軸）</span></div>
+      <div class="table-wrap"><table class="data-table compact"><thead><tr><th>日期</th><th>當沖占比</th><th>借券賣出</th><th>借券餘額</th><th>餘額增減</th></tr></thead><tbody>
+      ${d.days.map((day, i) => i).reverse().map(i => `<tr><td>${d.days[i].slice(5)}</td><td>${ratio[i] == null ? '—' : ratio[i] + '%'}</td><td>${sell[i] == null ? '—' : numFmt(sell[i])}</td>
+        <td>${bal[i] == null ? '—' : numFmt(bal[i])}</td>${i > 0 && bal[i] != null && bal[i - 1] != null ? `<td class="${signClass(bal[i] - bal[i - 1])}">${bal[i] - bal[i - 1] >= 0 ? '+' : ''}${numFmt(bal[i] - bal[i - 1])}</td>` : '<td>—</td>'}</tr>`).join('')}
+      </tbody></table></div>
+      <p class="hint" style="padding:4px 16px 16px">當沖占比＝當天當沖成交量 ÷ 總成交量，越高代表短線客越多、股價波動通常越大。借券賣出＝向別人借股票來賣（看空或避險），餘額增加代表空方部位變大，減少（還券）代表回補。資料：證交所、櫃買中心，盤後更新。</p>`;
+    const chart = makeChart($('#chart-dtsbl'), { leftPriceScale: { visible: true, borderColor: 'rgba(255,255,255,0.1)' } });
+    const bars = chart.addSeries(LightweightCharts.HistogramSeries, { color: 'rgba(245,158,11,0.55)', priceScaleId: 'left', priceFormat: { type: 'price', precision: 1, minMove: 0.1 } }, 0);
+    bars.setData(d.days.map((t, i) => ({ time: t, value: ratio[i] })).filter(p => p.value != null));
+    const line = chart.addSeries(LightweightCharts.LineSeries, { color: '#7aa2f7', lineWidth: 2, priceLineVisible: false, priceFormat: { type: 'volume' } }, 0);
+    line.setData(d.days.map((t, i) => ({ time: t, value: bal[i] })).filter(p => p.value != null));
+    showAllBars(chart, L);
+  } catch (e) { /* 沒有資料就不顯示 */ }
 }
 
 // ---- 分點 ----
