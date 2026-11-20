@@ -149,6 +149,18 @@ html, body {
 .news-time { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
 .mh-more { padding: 0 12px 8px; font-size: 13px; }
 .mh-more summary { cursor: pointer; color: var(--text-dim); padding: 4px 4px 8px; }
+/* 公告（2026-11-21） */
+.dt-flags { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 16px 6px; cursor: pointer; }
+.dt-flags[hidden] { display: none; }
+.nf { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+.nf.bad { background: rgba(230,65,60,0.18); color: #ff6b66; }
+.nf.warn { background: rgba(245,158,11,0.18); color: #f5b041; }
+.nf.info { background: rgba(122,162,247,0.16); color: #9bb8ff; }
+.nf-row { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.nf-tag { margin-left: 6px; font-size: 10px; padding: 0 4px; border-radius: 4px; }
+.nf-tag.bad { background: rgba(230,65,60,0.25); color: #ff6b66; }
+.nf-tag.warn { background: rgba(245,158,11,0.25); color: #f5b041; }
+.nf-tag.info { background: rgba(122,162,247,0.2); color: #9bb8ff; }
 /* 選股（2026-11-21） */
 .scr-panel { padding: 4px 12px 8px; border-bottom: 1px solid var(--border); }
 .scr-grp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }

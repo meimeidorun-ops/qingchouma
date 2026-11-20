@@ -398,6 +398,7 @@ async function paintDetailScore(stock) {
   const box = $('#dt-score');
   box.hidden = true;
   if (typeof paintDetailTemp === 'function') paintDetailTemp(stock);
+  if (typeof paintDetailFlags === 'function') paintDetailFlags(stock);
   let it = scoreMap.get(stock.stock_id);
   if (!it) {
     try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) {}
@@ -513,6 +514,7 @@ async function renderWatchlist() {
   wlRendered = list;
   paintScores(list);
   if (typeof etfPaintWatchTags === 'function') etfPaintWatchTags();
+  if (typeof noticePaintWatchTags === 'function') noticePaintWatchTags();
 
   // 先用手機裡上次的報價立刻顯示，再去抓最新的覆蓋（後端約需數秒）。
   const cached = Backend.quotePeek(list);
