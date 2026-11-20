@@ -110,6 +110,7 @@ async function loadHolders() {
   container.innerHTML = '<div class="loading">載入中…（首次查詢約需 10 秒）</div>';
   $('#table-holders thead').innerHTML = '';
   $('#table-holders tbody').innerHTML = '';
+  holdersQuick(stock);
   try {
     const [weeks, prices] = await Promise.all([
       Backend.holders(stock.stock_id, 26),
@@ -122,6 +123,31 @@ async function loadHolders() {
   } catch (e) {
     if (tabLive('holders', tk, stock)) container.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
   }
+}
+
+// 2026-11-21：大戶頁籤先用全市場集保檔（mk/tdcc.json）秒出最新一週摘要＋全市場排名，完整 26 週歷史（Apps Script）慢慢來
+async function holdersQuick(stock) {
+  const box = $('#holders-quick');
+  if (!box) return;
+  box.innerHTML = '';
+  try {
+    const td = await Mk.load('tdcc');
+    if (currentStock !== stock) return;
+    const s = td.s[stock.stock_id];
+    if (!s) return;
+    const W = td.weeks.length, b = s[0][W - 1], k1 = s[1][W - 1], rt = s[2][W - 1], pp = s[3][W - 1];
+    const b1 = s[0][W - 2], pp1 = s[3][W - 2];
+    // 大戶比例在全市場普通股的排名（前 X%）
+    const all = Object.entries(td.s).filter(([id, v]) => /^[1-9]\d{3}$/.test(id) && v[0][W - 1] != null && v[3][W - 1] >= 100).map(([, v]) => v[0][W - 1]);
+    const rank = b == null ? null : all.filter(x => x > b).length / all.length * 100;
+    const d = (v, n = 2) => v == null ? '' : `（週 ${v >= 0 ? '+' : ''}${v.toFixed(n)}）`;
+    box.innerHTML = `<div class="cs-pills" style="padding-top:8px">
+        <div class="cs-pill"><span class="dim">大戶 400 張↑</span><b>${b == null ? '—' : b.toFixed(2) + '%'}</b><span class="${b1 != null ? signClass(b - b1) : 'dim'}">${b1 != null ? d(b - b1) : rank != null ? `全市場前 ${Math.max(1, Math.round(rank))}%` : ''}</span></div>
+        <div class="cs-pill"><span class="dim">千張大戶</span><b>${k1 == null ? '—' : k1.toFixed(2) + '%'}</b><span class="dim">1000 張以上</span></div>
+        <div class="cs-pill"><span class="dim">散戶 50 張↓</span><b>${rt == null ? '—' : rt.toFixed(2) + '%'}</b><span class="dim">股東 ${numFmt(pp)} 人${pp1 ? d(pp - pp1, 0).replace('.0', '') : ''}</span></div>
+      </div>
+      <div class="cs-date">集保 ${td.weeks[W - 1].slice(5)} 週${rank != null ? `｜大戶比例在全市場排前 ${Math.max(1, Math.round(rank))}%` : ''}</div>`;
+  } catch (e) { /* 沒有全市場檔就只等完整歷史 */ }
 }
 
 // ---- 資券（融資融券，FinMind）----

@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '77';
+window.APP_V = '78';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -47,6 +47,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
     <div class="wl-bar">
       <button class="wl-sort" id="wl-sort" title="切換排序">排序：分數 高→低</button>
       <button class="wl-sort" id="wl-score-mode" title="切換評分版本">評分：積極</button>
+      <button class="wl-sort" id="wl-extra" title="清單多顯示一個籌碼數字">欄位：無</button>
       <div class="wl-updated" id="wl-updated"></div>
     </div>
     <div class="guest-note" id="guest-note" hidden>訪客模式：清單只存在這台裝置，別人看不到；預估 EPS、評分、操作計畫是擁有者功能。<br>是擁有者？到 ⚙ 設定填「後端寫入密碼」。</div>
@@ -251,6 +252,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
       </div>
 
       <div class="tab-pane" id="pane-holders">
+        <div id="holders-quick"></div>
         <div class="hold-row">
           <span class="hold-label big">大戶持股&gt;</span>
           <div class="hold-opts" id="hold-big">
@@ -479,7 +481,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum', 'wlextra']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>

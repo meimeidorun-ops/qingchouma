@@ -149,6 +149,8 @@ html, body {
 .news-time { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
 .mh-more { padding: 0 12px 8px; font-size: 13px; }
 .mh-more summary { cursor: pointer; color: var(--text-dim); padding: 4px 4px 8px; }
+.wl-extra { font-size: 11px; color: var(--text-dim); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.wl-extra.up { color: #e6413c; } .wl-extra.down { color: #1fa363; }
 /* 籌碼總覽（2026-11-21） */
 .cs-tbl { cursor: pointer; }
 .cs-tbl td, .cs-tbl th { padding: 6px 8px; }

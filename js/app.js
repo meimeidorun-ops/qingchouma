@@ -516,6 +516,7 @@ async function renderWatchlist() {
   paintScores(list);
   if (typeof etfPaintWatchTags === 'function') etfPaintWatchTags();
   if (typeof noticePaintWatchTags === 'function') noticePaintWatchTags();
+  if (typeof wlPaintExtra === 'function') wlPaintExtra();
 
   // 先用手機裡上次的報價立刻顯示，再去抓最新的覆蓋（後端約需數秒）。
   const cached = Backend.quotePeek(list);
