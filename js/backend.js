@@ -75,7 +75,9 @@ async function cnyesQuotes(stocks) {
     const path = '/v2/quote/quotes/' + c.map(cnyesSym).join(',');
     // 2026-10-28 盤中實測：鉅亨後面好幾台伺服器的資料新舊不一（同一時間可能拿到 2～7 分鐘前的快照，加亂數參數也沒用）。
     // 每批同時問兩次、每檔取成交時間較新的那份 → 大幅降低拿到舊快照的機會（多 0.1 秒內的流量）。
-    let res = (await Promise.allSettled([cnyesGet(path), cnyesGet(path)])).filter(r => r.status === 'fulfilled').map(r => r.value);
+    // 只有自選清單這種小量（≤2 批）才問兩次；排行的 700 檔（14 批）問兩次會一次送 28 個請求，鉅亨會拒絕一部分（2026-11-20）
+    const reqs = chunks.length <= 2 ? [cnyesGet(path), cnyesGet(path)] : [cnyesGet(path)];
+    let res = (await Promise.allSettled(reqs)).filter(r => r.status === 'fulfilled').map(r => r.value);
     // 兩次都失敗（偶發）→ 隔 0.8 秒再試一次；原本直接改用備援（證交所 MIS，鎖漲停股會顯示成昨收）
     if (!res.length) {
       await new Promise(r => setTimeout(r, 800));
