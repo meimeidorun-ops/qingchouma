@@ -1,4 +1,4 @@
-const CACHE = 'qingchoumaka-v67';
+const CACHE = 'qingchoumaka-v68';
 const ASSETS = [
   './',
   'index.html',

@@ -198,7 +198,8 @@ async function paintIndexBar() {
 // ---------------------------------------------------------------- 📊 全市場排行
 const Rank = { cat: localStorage.getItem('rk_cat') || 'up', dir: localStorage.getItem('rk_dir') || 'buy', n: Number(localStorage.getItem('rk_n') || 1),
   noEtf: localStorage.getItem('rk_noetf') === '1', liq: localStorage.getItem('rk_liq') !== '0', safe: false, seq: 0 };
-const RK_CATS = [['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['score', '評分']];
+const RK_CATS = [['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['etf', 'ETF'], ['score', '評分']];
+const RK_ETF = [['prem', '溢價'], ['disc', '折價'], ['in', '資金流入'], ['out', '資金流出'], ['size', '規模'], ['in5', '5日流入'], ['out5', '5日流出']];
 const rkIsPrice = () => ['up', 'down', 'money'].includes(Rank.cat);
 const rkIsInst = () => ['f', 't', 'd', 'ft', 'fta'].includes(Rank.cat);
 // 2026-11-10：同步買賣＝每一方「各自」都是買超（或賣超）才算；三方量體差很多（外資常是投信的好幾倍），
@@ -219,8 +220,11 @@ function paintRankBars() {
       '<span style="width:8px"></span>' + [1, 5, 10, 20].map(n => btn('n', n, `${n}日`, Rank.n === n)).join('');
   } else if (Rank.cat === 'score') {
     sub = btn('safe', '0', '積極版', !Rank.safe) + btn('safe', '1', '穩健版', Rank.safe);
+  } else if (Rank.cat === 'etf') {
+    if (!RK_ETF.some(([v]) => v === Rank.etf)) Rank.etf = 'prem';
+    sub = RK_ETF.map(([v, l]) => btn('etf', v, l, Rank.etf === v)).join('');
   }
-  if (Rank.cat !== 'score') sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
+  if (Rank.cat !== 'score' && Rank.cat !== 'etf') sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
   $('#rk-sub').innerHTML = sub;
 }
 
@@ -305,6 +309,39 @@ async function openRank() {
       rows = rows.map(r => ({ id: r.id, name: day.get(r.id).name, px: px.get(r.id) || day.get(r.id), cls: sgn > 0 ? 'up' : 'down', main: pctFmt(r.v, 1),
         sub: `${r.lots > 0 ? '+' : ''}${numFmt(r.lots)} 張｜餘額 ${numFmt(r.bal)} 張` }));
       note = `融資餘額增減%｜資料日 ${d.days[L - 1].slice(5)}，近 ${back} 日（餘額 ≥500 張）｜更新 ${d.updated.slice(5)}`;
+    } else if (Rank.cat === 'etf') {
+      // ETF：即時折溢價（快速後端）或收盤檔；5 日流入用 etf_hist 的單位數變化 × 淨值
+      const m = await etfData();
+      const k = Rank.etf;
+      let H = null;
+      if (k === 'in5' || k === 'out5') H = await Mk.load('etf_hist').catch(() => null);
+      const name = id => (day.get(id) || {}).name || id;
+      for (const e of m.values()) {
+        if (e.price == null || !e.units) continue;
+        const size = e.units * (e.nav || e.price);
+        if (size < 5e8 && k !== 'size') continue;  // 規模 5 億以下的小 ETF 不排（折溢價常常很誇張、成交量很小）
+        let v = null, main = '', sub = `規模 ${yi(size)} 億｜${e.prem != null ? premTxt(e.prem) : '—'}`;
+        if (k === 'prem' || k === 'disc') { if (e.prem == null) continue; v = k === 'prem' ? e.prem : -e.prem; main = premTxt(e.prem); sub = `市價 ${numFmt(e.price, 2)}｜淨值 ${numFmt(e.nav, 2)}｜規模 ${yi(size)} 億`; }
+        else if (k === 'in' || k === 'out') {
+          if (!e.dUnits) continue;
+          const f = e.dUnits * (e.prevNav || e.nav || e.price);
+          if ((k === 'in') !== (f > 0)) continue;
+          v = Math.abs(f); main = `${f > 0 ? '+' : '-'}${yi(Math.abs(f))} 億`; sub = `單位 ${e.dUnits > 0 ? '+' : ''}${numFmt(e.dUnits / 1000)} 張｜規模 ${yi(size)} 億`;
+        } else if (k === 'size') { v = size; main = `${yi(size)} 億`; }
+        else if (H && H.s[e.id]) {
+          const [u, nav] = H.s[e.id], L = H.days.length;
+          let f = 0, n = 0;
+          for (let i = Math.max(1, L - 5); i < L; i++) if (u[i] != null && u[i - 1] != null && nav[i] != null) { f += (u[i] - u[i - 1]) * nav[i]; n++; }
+          if (!n || (k === 'in5') !== (f > 0)) continue;
+          v = Math.abs(f); main = `${f > 0 ? '+' : '-'}${yi(Math.abs(f))} 億`; sub = `近 ${n} 日單位變化｜規模 ${yi(size)} 億`;
+        }
+        if (v == null) continue;
+        rows.push({ id: e.id, name: name(e.id), px: day.get(e.id) || { close: e.price }, cls: (k === 'prem' || k === 'in' || k === 'in5') ? 'up' : (k === 'size' ? 'flat' : 'down'), main, sub, v });
+      }
+      rows.sort((a, b) => b.v - a.v);
+      const any = m.values().next().value || {};
+      const lbl = Object.fromEntries(RK_ETF)[k];
+      note = `ETF ${lbl}｜${any.live ? '即時' : '收盤'} ${any.date ? any.date.slice(4, 6) + '/' + any.date.slice(6) : ''} ${any.time ? any.time.slice(0, 5) : ''}｜淨值為投信預估${k === 'in5' || k === 'out5' ? `｜歷史從 ${H ? H.days[0].slice(5) : '—'} 起累積` : ''}${k !== 'size' ? '｜規模 5 億以上' : ''}`;
     } else {
       const d = await Mk.load('scores');
       const i = Rank.safe ? 1 : 0;
@@ -355,6 +392,7 @@ $('#rk-sub').addEventListener('click', e => {
   if (ds.dir) { Rank.dir = ds.dir; localStorage.setItem('rk_dir', ds.dir); }
   else if (ds.n) { Rank.n = Number(ds.n); localStorage.setItem('rk_n', ds.n); }
   else if (ds.safe) Rank.safe = ds.safe === '1';
+  else if (ds.etf) Rank.etf = ds.etf;
   else if (ds.toggle === 'noetf') { Rank.noEtf = !Rank.noEtf; localStorage.setItem('rk_noetf', Rank.noEtf ? '1' : '0'); }
   else if (ds.toggle === 'liq') { Rank.liq = !Rank.liq; localStorage.setItem('rk_liq', Rank.liq ? '1' : '0'); }
   else return;

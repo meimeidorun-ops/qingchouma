@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '67';
+window.APP_V = '68';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -77,6 +77,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
     <div class="tabbar">
       <button class="tab-btn active" data-tab="rt">即時</button>
+      <button class="tab-btn" data-tab="etf" hidden>ETF</button>
       <button class="tab-btn" data-tab="kline">K 線</button>
       <button class="tab-btn" data-tab="inst">法人買賣超</button>
       <button class="tab-btn" data-tab="margin">資券</button>
@@ -91,6 +92,10 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
         <div class="rt-stats" id="rt-stats"></div>
         <div class="chart-container" id="chart-rt" style="height:340px"></div>
         <p class="hint" id="rt-note" style="padding:8px 16px 24px"></p>
+      </div>
+
+      <div class="tab-pane" id="pane-etf">
+        <div id="etf-body"></div>
       </div>
 
       <div class="tab-pane" id="pane-kline">
@@ -441,7 +446,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>

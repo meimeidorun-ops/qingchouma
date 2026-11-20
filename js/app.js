@@ -339,7 +339,11 @@ async function openStock(stock) {
   // reset to first tab (即時)
   $$('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
   $$('.tab-pane').forEach((p, i) => p.classList.toggle('active', i === 0));
-  loadedTabs = { rt: false, kline: false, inst: false, margin: false, branch: false, revenue: false, profit: false, holders: false };
+  loadedTabs = { rt: false, kline: false, inst: false, margin: false, branch: false, revenue: false, profit: false, holders: false, etf: false };
+  // ETF：顯示「ETF」頁籤（折溢價、規模、申購贖回），藏起營收／獲利（ETF 沒有）
+  const etfStock = /^00/.test(stock.stock_id);
+  $$('.tab-btn[data-tab="etf"]').forEach(b => { b.hidden = !etfStock; });
+  $$('.tab-btn[data-tab="revenue"], .tab-btn[data-tab="profit"]').forEach(b => { b.hidden = etfStock; });
   rtHandle = null;
 
   stopRtTimer();
@@ -428,6 +432,7 @@ function prefetchStock(stock) {
 const TAB_LOADERS = {
   rt: () => loadRealtime(true), kline: () => loadKline(), inst: () => loadInstitutional(), margin: () => loadMargin(),
   branch: () => loadBranch(), revenue: () => loadRevenue(), profit: () => loadProfit(), holders: () => loadHolders(),
+  etf: () => loadEtf(),
 };
 
 // ---- Search ----
@@ -506,6 +511,7 @@ async function renderWatchlist() {
   });
   wlRendered = list;
   paintScores(list);
+  if (typeof etfPaintWatchTags === 'function') etfPaintWatchTags();
 
   // 先用手機裡上次的報價立刻顯示，再去抓最新的覆蓋（後端約需數秒）。
   const cached = Backend.quotePeek(list);
