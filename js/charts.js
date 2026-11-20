@@ -155,10 +155,22 @@ function renderKLine(container, priceRows, opts = {}) {
     paneIdx++;
   }
 
+  // ---- (optional) 融資：每日增減（柱）＋餘額（線，右軸另一個刻度）（2026-11-21） ----
+  const marginRows = (opts.marginRows || []).filter(r => r.date >= dates[0]);
+  if (opts.showMargin && marginRows.length) {
+    const chgSeries = chart.addSeries(LightweightCharts.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'mg-chg' }, paneIdx);
+    chgSeries.setData(marginRows.filter(r => r.chg != null).map(r => ({ time: r.date, value: r.chg, color: r.chg >= 0 ? 'rgba(230,65,60,0.6)' : 'rgba(31,163,99,0.6)' })));
+    const balSeries = chart.addSeries(LightweightCharts.LineSeries, { color: '#e0a3ff', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, priceFormat: { type: 'volume' } }, paneIdx);
+    balSeries.setData(marginRows.filter(r => r.bal != null).map(r => ({ time: r.date, value: r.bal })));
+    chart.priceScale('mg-chg', paneIdx).applyOptions({ visible: false, scaleMargins: { top: 0.55, bottom: 0 } });
+    paneIdx++;
+  }
+
   // ---- Pane 3 (optional): 大戶持股比例 ----
   if (showHolding && holdingRows.length) {
-    const holdSeries = chart.addSeries(LightweightCharts.LineSeries, { color: '#7aa2f7', lineWidth: 2 }, paneIdx);
-    holdSeries.setData(holdingRows.map(r => ({ time: r.date, value: r.percent })));
+    const hr = holdingRows.filter(r => r.date >= dates[0]);
+    const holdSeries = chart.addSeries(LightweightCharts.LineSeries, { color: '#7aa2f7', lineWidth: 2, lineType: 1, pointMarkersVisible: true, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } }, paneIdx);
+    holdSeries.setData((hr.length ? hr : holdingRows.slice(-1)).map(r => ({ time: r.date, value: r.percent })));
     paneIdx++;
   }
 
@@ -184,7 +196,8 @@ function renderKLine(container, priceRows, opts = {}) {
   setPaneHeights(chart, paneIdx - 2);
   if (opts.visibleBars) chart._window = opts.visibleBars;
   showAllBars(chart, priceRows.length);
-  if (opts.infoEl) klineInfo(chart, opts.infoEl, priceRows, { ma5, ma20, instRows, showInst, volUnit: opts.volUnit || '張', intraday, liveLast: opts.liveLast });
+  if (opts.infoEl) klineInfo(chart, opts.infoEl, priceRows, { ma5, ma20, instRows, showInst, volUnit: opts.volUnit || '張', intraday, liveLast: opts.liveLast,
+    marginRows: opts.showMargin ? marginRows : [], holdingRows: showHolding ? holdingRows : [] });
   return chart;
 }
 
@@ -193,6 +206,9 @@ function renderKLine(container, priceRows, opts = {}) {
 function klineInfo(chart, el, rows, o) {
   const idx = new Map(rows.map((r, i) => [String(r.date), i]));
   const instBy = o.showInst && o.instRows.length ? aggregateInstitutionalByDate(o.instRows, 1000) : null;
+  const mgBy = new Map((o.marginRows || []).map(r => [r.date, r]));
+  const hold = (o.holdingRows || []).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const holdAt = d => { let v = null; for (const h of hold) { if (h.date <= d) v = h; else break; } return v; };
   const f = (v, d = 2) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
   const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
   const when = t => {
@@ -216,7 +232,9 @@ function klineInfo(chart, el, rows, o) {
       `<span>量 ${f(r.Trading_Volume / 1000, o.volUnit === '億' ? 0 : 0)} ${o.volUnit}</span>` +
       (o.ma5[i] != null ? `<span class="kli-ma5">MA5 ${f(o.ma5[i])}</span>` : '') +
       (o.ma20[i] != null ? `<span class="kli-ma20">MA20 ${f(o.ma20[i])}</span>` : '') +
-      (inst != null ? `<span>法人 <b class="${cls(inst)}">${inst > 0 ? '+' : ''}${f(inst, 0)}</b> ${o.volUnit === '億' ? '億' : '張'}</span>` : '');
+      (inst != null ? `<span>法人 <b class="${cls(inst)}">${inst > 0 ? '+' : ''}${f(inst, 0)}</b> ${o.volUnit === '億' ? '億' : '張'}</span>` : '') +
+      (() => { const m = mgBy.get(r.date); return m && m.bal != null ? `<span class="kli-mg">融資 ${f(m.bal, 0)} 張${m.chg != null ? `（<b class="${cls(m.chg)}">${m.chg > 0 ? '+' : ''}${f(m.chg, 0)}</b>）` : ''}</span>` : ''; })() +
+      (() => { if (o.intraday || !hold.length) return ''; const h = holdAt(String(r.date)); return h ? `<span class="kli-hold">大戶 ${f(h.percent)}%<span class="dim">（${h.date.slice(5)} 週）</span></span>` : ''; })();
   };
   paint(rows.length - 1);
   chart.subscribeCrosshairMove(p => {

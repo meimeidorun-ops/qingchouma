@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '71';
+window.APP_V = '72';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -86,6 +86,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
       <button class="tab-btn" data-tab="revenue">營收</button>
       <button class="tab-btn" data-tab="profit">獲利</button>
       <button class="tab-btn" data-tab="holders">大戶</button>
+      <button class="tab-btn" data-tab="news">新聞</button>
     </div>
 
     <div class="tab-content">
@@ -93,6 +94,10 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
         <div class="rt-stats" id="rt-stats"></div>
         <div class="chart-container" id="chart-rt" style="height:340px"></div>
         <p class="hint" id="rt-note" style="padding:8px 16px 24px"></p>
+      </div>
+
+      <div class="tab-pane" id="pane-news">
+        <div id="news-body"></div>
       </div>
 
       <div class="tab-pane" id="pane-etf">
@@ -114,6 +119,8 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
         <div class="range-bar" id="kline-layers">
           <button class="range-btn active" data-layer="inst">法人</button>
           <button class="range-btn" data-layer="bband">BB</button>
+          <button class="range-btn" data-layer="margin">融資</button>
+          <button class="range-btn" data-layer="hold">大戶</button>
           <button class="range-btn active" data-indicator="">無</button>
           <button class="range-btn" data-indicator="kd">KD</button>
           <button class="range-btn" data-indicator="macd">MACD</button>
@@ -463,7 +470,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>

@@ -20,7 +20,7 @@ const Mk = {
   },
   async dayMap() {
     const d = await Mk.load('day');
-    if (!d._map) d._map = new Map(d.rows.map(r => [r[0], { id: r[0], name: r[1], close: r[2], pct: r[3], vol: r[4], money: r[5], pct5: r[6], pct20: r[7], mkt: r[8] }]));
+    if (!d._map) d._map = new Map(d.rows.map(r => [r[0], { id: r[0], name: r[1], close: r[2], pct: r[3], vol: r[4], money: r[5], pct5: r[6], pct20: r[7], mkt: r[8], money20: r[9] }]));
     return d._map;
   },
   // 盤中即時：成交值前 700 檔（＋自選）直接問鉅亨，一次 50 檔平行抓，約 0.5 秒。20 秒內重複用。
@@ -198,7 +198,7 @@ async function paintIndexBar() {
 // ---------------------------------------------------------------- 📊 全市場排行
 const Rank = { cat: localStorage.getItem('rk_cat') || 'up', dir: localStorage.getItem('rk_dir') || 'buy', n: Number(localStorage.getItem('rk_n') || 1),
   noEtf: localStorage.getItem('rk_noetf') === '1', liq: localStorage.getItem('rk_liq') !== '0', safe: false, seq: 0 };
-const RK_CATS = [['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
+const RK_CATS = [['screen', '🔎選股'], ['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
 const RK_SEC = [['chg', '漲跌幅'], ['money', '成交值'], ['f', '外資買超'], ['t', '投信買超']];
 const RK_ETF = [['prem', '溢價'], ['disc', '折價'], ['in', '資金流入'], ['out', '資金流出'], ['size', '規模'], ['in5', '5日流入'], ['out5', '5日流出']];
 const rkIsPrice = () => ['up', 'down', 'money'].includes(Rank.cat);
@@ -228,7 +228,7 @@ function paintRankBars() {
     if (!RK_SEC.some(([v]) => v === Rank.sec)) Rank.sec = 'chg';
     sub = (Rank.secCode ? btn('secback', '1', '‹ 全部類股', false) : '') + RK_SEC.map(([v, l]) => btn('sec', v, l, Rank.sec === v)).join('');
   }
-  if (!['score', 'etf', 'sector'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
+  if (!['score', 'etf', 'sector', 'screen'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
   $('#rk-sub').innerHTML = sub;
 }
 
@@ -245,7 +245,7 @@ async function openRank() {
     let rows = [], note = '', unit = '';
     // 價格：盤中（或行情檔還沒更新到今天）用鉅亨即時；不然用收盤檔
     let px = day, pxNote = `收盤 ${dayDate.slice(5)}`;
-    if (rkIsPrice() || rkIsInst() || Rank.cat === 'margin' || Rank.cat === 'sector') {
+    if (rkIsPrice() || rkIsInst() || ['margin', 'sector', 'screen'].includes(Rank.cat)) {
       try {
         const live = await Mk.live();
         const any = live.values().next().value;
@@ -313,6 +313,9 @@ async function openRank() {
       rows = rows.map(r => ({ id: r.id, name: day.get(r.id).name, px: px.get(r.id) || day.get(r.id), cls: sgn > 0 ? 'up' : 'down', main: pctFmt(r.v, 1),
         sub: `${r.lots > 0 ? '+' : ''}${numFmt(r.lots)} 張｜餘額 ${numFmt(r.bal)} 張` }));
       note = `融資餘額增減%｜資料日 ${d.days[L - 1].slice(5)}，近 ${back} 日（餘額 ≥500 張）｜更新 ${d.updated.slice(5)}`;
+    } else if (Rank.cat === 'screen') {
+      ({ rows, note } = await scrRows(day, px));
+      note += `｜價格 ${pxNote}`;
     } else if (Rank.cat === 'sector') {
       // 類股：產業分類 mk/ind.json；價格用即時（成交值前 700 檔有即時，其他用收盤）；法人用 inst.json 最新一天
       const [I, inst] = await Promise.all([Mk.load('ind'), Mk.load('inst').catch(() => null)]);
@@ -398,8 +401,9 @@ async function openRank() {
     if (seq !== Rank.seq) return;
     sum.innerHTML = `${note}｜★ 在自選清單`;
     Rank.rows = rows = rows.slice(0, 100);
-    if (!rows.length) { box.innerHTML = '<div class="empty-hint">沒有符合的股票</div>'; return; }
-    box.innerHTML = rows.map((r, i) => {
+    const panel = Rank.cat === 'screen' && typeof scrPanelHtml === 'function' ? scrPanelHtml() : '';
+    if (!rows.length) { box.innerHTML = panel + `<div class="empty-hint">沒有符合的股票${panel ? '<br>試著少勾幾個條件' : ''}</div>`; return; }
+    box.innerHTML = panel + rows.map((r, i) => {
       const p = r.px || {};
       return `<div class="rk-row" data-i="${i}">
         <span class="rk-no">${i + 1}</span>

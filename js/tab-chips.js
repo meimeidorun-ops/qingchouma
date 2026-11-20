@@ -301,12 +301,65 @@ async function loadBranch() {
           </tr>`).join('')}</tbody>
         </table>
       </div>`;
-    body.innerHTML = table(d.buy, 'up') + table(d.sell, 'down') +
+    body.innerHTML = '<div id="main-hist"></div>' + table(d.buy, 'up') + table(d.sell, 'down') +
       '<div class="branch-note" style="padding-top:0">點分點名稱可看它最近 20 個交易日在這檔的進出。</div>';
     body.querySelectorAll('.br-link').forEach(el =>
       el.addEventListener('click', () => openBranchHist(stock, el.dataset.bid, el.dataset.bhid, el.dataset.name)));
+    loadMainHist(stock, tk, d.date);
   } catch (e) {
     if (tabLive('branch', tk, stock)) body.innerHTML = `<div class="error-msg">載入失敗：${e.message}</div>`;
+  }
+}
+
+// 主力買賣超歷史（2026-11-21）：每天前 15 大買超分點合計 − 前 15 大賣超分點合計（張），近 20 個交易日。
+// 快速後端 action=mainHist（一次抓 20 天、CDN 快取 1 小時）；交易日用 mk/inst.json 的日期＋分點頁最新資料日。
+const mainHistCache = {};
+async function loadMainHist(stock, tk, latest) {
+  const box = $('#main-hist');
+  if (!box) return;
+  box.innerHTML = '<div class="section-label">主力買賣超（近 20 日）</div><div class="loading" style="padding:12px">載入中…</div>';
+  try {
+    let days = [];
+    try { days = (await Mk.load('inst')).days.slice(-20); } catch (e) {}
+    const lt = latest ? latest.replace(/\//g, '-') : '';
+    if (lt && !days.includes(lt) && (!days.length || lt > days[days.length - 1])) days = days.concat(lt).slice(-20);
+    if (!days.length) throw new Error('沒有交易日資料');
+    const key = `${stock.stock_id}_${days[days.length - 1]}`;
+    let rows = mainHistCache[key];
+    if (!rows) {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 15000);
+      try {
+        const j = await (await fetch(`${FAST_URL}?action=mainHist&id=${stock.stock_id}&dates=${days.join(',')}`, { signal: ctl.signal })).json();
+        if (j.status !== 200) throw new Error(j.error || '抓不到');
+        rows = mainHistCache[key] = j.data;
+      } finally { clearTimeout(t); }
+    }
+    if (!tabLive('branch', tk, stock) || !$('#main-hist')) return;
+    let cum = 0;
+    const cumRows = rows.map(r => ({ ...r, cum: (cum += r.net) }));
+    const sum5 = rows.slice(-5).reduce((a, r) => a + r.net, 0), sum20 = cum;
+    const upDays = rows.filter(r => r.net > 0).length;
+    box.innerHTML = `<div class="section-label">主力買賣超（近 ${rows.length} 日）</div>
+      <div class="branch-summary"><span>近 5 日 <b class="${signClass(sum5)}">${sum5 >= 0 ? '+' : ''}${numFmt(sum5)}</b> 張</span>
+        <span>近 ${rows.length} 日 <b class="${signClass(sum20)}">${sum20 >= 0 ? '+' : ''}${numFmt(sum20)}</b> 張</span>
+        <span>主力買超 <b>${upDays}</b>／${rows.length} 天</span></div>
+      <div class="chart-container" id="chart-main" style="height:200px"></div>
+      <div class="legend-row"><span><span class="dot" style="background:#e6413c"></span>主力淨買</span><span><span class="dot" style="background:#1fa363"></span>主力淨賣</span><span><span class="dot" style="background:#f2c744"></span>累計（右軸）</span></div>
+      <details class="mh-more"><summary>每日明細</summary>
+        <div class="table-wrap"><table class="data-table compact"><thead><tr><th>日期</th><th>前15買</th><th>前15賣</th><th>主力淨</th><th>買超均價</th><th>賣超均價</th></tr></thead>
+        <tbody>${rows.slice().reverse().map(r => `<tr><td>${r.date.slice(5)}</td><td>${numFmt(r.buy)}</td><td>${numFmt(r.sell)}</td>
+          <td class="${signClass(r.net)}">${r.net >= 0 ? '+' : ''}${numFmt(r.net)}</td><td>${numFmt(r.buyCost, 2)}</td><td>${numFmt(r.sellCost, 2)}</td></tr>`).join('')}</tbody></table></div>
+      </details>`;
+    const chart = makeChart($('#chart-main'));
+    const bars = chart.addSeries(LightweightCharts.HistogramSeries, { priceFormat: { type: 'volume' } }, 0);
+    bars.setData(cumRows.map(r => ({ time: r.date, value: r.net, color: r.net >= 0 ? UP_COLOR : DOWN_COLOR })));
+    const line = chart.addSeries(LightweightCharts.LineSeries, { color: '#f2c744', lineWidth: 2, priceScaleId: 'mh-cum', priceLineVisible: false }, 0);
+    chart.priceScale('mh-cum', 0).applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
+    line.setData(cumRows.map(r => ({ time: r.date, value: r.cum })));
+    showAllBars(chart, cumRows.length);
+  } catch (e) {
+    if ($('#main-hist') && tabLive('branch', tk, stock)) box.innerHTML = `<div class="section-label">主力買賣超</div><div class="error-msg">暫時抓不到（${e.message}）</div>`;
   }
 }
 

@@ -142,6 +142,21 @@ html, body {
 .chart-container.tall { height: 380px; }
 
 .legend-row { display: flex; gap: 14px; padding: 4px 16px 8px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
+.news-item { display: block; padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
+.news-item:active { background: rgba(255,255,255,0.04); }
+.news-title { font-size: 15px; line-height: 1.45; font-weight: 600; }
+.news-sum { font-size: 12px; color: var(--text-dim); margin-top: 3px; line-height: 1.5; }
+.news-time { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.mh-more { padding: 0 12px 8px; font-size: 13px; }
+.mh-more summary { cursor: pointer; color: var(--text-dim); padding: 4px 4px 8px; }
+/* 選股（2026-11-21） */
+.scr-panel { padding: 4px 12px 8px; border-bottom: 1px solid var(--border); }
+.scr-grp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.scr-g { font-size: 12px; color: var(--text-dim); width: 40px; flex-shrink: 0; }
+.scr-chip { font-size: 12px; padding: 4px 9px; border-radius: 14px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+.scr-chip.on { background: rgba(242,199,68,0.18); border-color: #f2c744; color: #f2c744; }
+.scr-chip.sort.on { background: rgba(122,162,247,0.18); border-color: #7aa2f7; color: #7aa2f7; }
+.scr-chip.clear { color: var(--text-dim); margin-left: auto; }
 /* 國際盤（2026-11-21） */
 .glb-bar { display: flex; align-items: center; gap: 12px; padding: 6px 16px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .glb-bar[hidden] { display: none; }
@@ -220,6 +235,11 @@ html, body {
 .kl-info .kli-date { color: var(--text); font-weight: 600; }
 .kl-info .kli-ma5 { color: #f2c744; }
 .kl-info .kli-ma20 { color: #7aa2f7; }
+.kl-info .kli-mg { color: #e0a3ff; }
+.kl-info .kli-hold { color: #7aa2f7; }
+#kline-layers { overflow-x: auto; scrollbar-width: none; }
+#kline-layers::-webkit-scrollbar { display: none; }
+#kline-layers .range-btn { flex-shrink: 0; white-space: nowrap; }
 .legend-row .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
 
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }

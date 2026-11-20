@@ -7,8 +7,9 @@ let klineRange = 180;
 let instRange = 90;
 let branchPeriod = 1;
 let marginRange = 180;
-let klineData = { price: [], inst: [], holding: [] };
-let klineOpts = { showInst: true, showBBand: false, indicator: null };
+let klineData = { price: [], inst: [], holding: [], margin: [] };
+let klineOpts = { showInst: true, showBBand: false, indicator: null,
+  showMargin: localStorage.getItem('kl_margin') === '1', showHolding: localStorage.getItem('kl_hold') === '1' };
 let klineInterval = '1d';
 let instUnit = 1000; // 1000 = 張, 1 = 股
 let loadedTabs = { rt: false, kline: false, inst: false, margin: false, branch: false, revenue: false, profit: false, holders: false };
@@ -339,7 +340,7 @@ async function openStock(stock) {
   // reset to first tab (即時)
   $$('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
   $$('.tab-pane').forEach((p, i) => p.classList.toggle('active', i === 0));
-  loadedTabs = { rt: false, kline: false, inst: false, margin: false, branch: false, revenue: false, profit: false, holders: false, etf: false };
+  loadedTabs = { rt: false, kline: false, inst: false, margin: false, branch: false, revenue: false, profit: false, holders: false, etf: false, news: false };
   // ETF：顯示「ETF」頁籤（折溢價、規模、申購贖回），藏起營收／獲利（ETF 沒有）
   const etfStock = /^00/.test(stock.stock_id);
   $$('.tab-btn[data-tab="etf"]').forEach(b => { b.hidden = !etfStock; });
@@ -432,7 +433,7 @@ function prefetchStock(stock) {
 const TAB_LOADERS = {
   rt: () => loadRealtime(true), kline: () => loadKline(), inst: () => loadInstitutional(), margin: () => loadMargin(),
   branch: () => loadBranch(), revenue: () => loadRevenue(), profit: () => loadProfit(), holders: () => loadHolders(),
-  etf: () => loadEtf(),
+  etf: () => loadEtf(), news: () => loadNews(),
 };
 
 // ---- Search ----
@@ -939,7 +940,8 @@ async function loadRealtime(silent = false) {
 // ---- K線 ----
 function klineContainerHeight() {
   const intraday = klineInterval !== '1d';
-  const extraPanes = (klineOpts.showInst && !intraday ? 1 : 0) + (klineOpts.indicator ? 1 : 0);
+  const extraPanes = (klineOpts.showInst && !intraday ? 1 : 0) + (klineOpts.indicator ? 1 : 0)
+    + (klineOpts.showMargin && !intraday && klineData.margin.length ? 1 : 0) + (klineOpts.showHolding && !intraday && klineData.holding.length ? 1 : 0);
   return 260 + extraPanes * 90;
 }
 
@@ -953,8 +955,10 @@ function redrawKline(keepRange = false) {
   charts.kline = renderKLine(container, klineData.price, {
     instRows: klineData.inst,
     holdingRows: klineData.holding,
+    marginRows: klineData.margin,
     showInst: klineOpts.showInst && klineInterval === '1d',
-    showHolding: false,
+    showHolding: klineOpts.showHolding && klineInterval === '1d',
+    showMargin: klineOpts.showMargin && klineInterval === '1d',
     showBBand: klineOpts.showBBand,
     indicator: klineOpts.indicator,
     intraday: klineInterval !== '1d',
@@ -971,6 +975,34 @@ function redrawKline(keepRange = false) {
       ch.timeScale().subscribeVisibleLogicalRangeChange(r => { if (r) ch._keepRange = r; });
     } catch (e) {}
   }
+}
+
+// K 線疊融資、大戶（2026-11-21）：開著才抓，抓到後重畫（不擋 K 線先出來）
+// 融資：Api.margin（近 40 日 mk、更早 FinMind）→ 每日餘額與增減（張）
+// 大戶：集保每週（Backend.holders）→ 400 張以上持股比例；週資料的日期對到「那天或之前最後一個交易日」
+async function klineLoadLayers(stock, tk) {
+  const dates = klineData.price.map(r => r.date);
+  if (!dates.length) return;
+  const snap = d => { let v = null; for (const x of dates) { if (x <= d) v = x; else break; } return v; };
+  const jobs = [];
+  if (klineOpts.showMargin && !klineData.margin.length) jobs.push(Api.margin(stock.stock_id, klineRange).then(rows => {
+    const set = new Set(dates);
+    klineData.margin = (rows || []).filter(r => set.has(r.date)).map(r => ({
+      date: r.date, bal: r.MarginPurchaseTodayBalance,
+      chg: r.MarginPurchaseYesterdayBalance != null && r.MarginPurchaseTodayBalance != null ? r.MarginPurchaseTodayBalance - r.MarginPurchaseYesterdayBalance : null,
+    }));
+  }).catch(() => {}));
+  if (klineOpts.showHolding && !klineData.holding.length) jobs.push(Backend.holders(stock.stock_id, 26).then(weeks => {
+    const seen = new Set();
+    klineData.holding = (weeks || []).map(w => {
+      const d = snap(`${w.d.slice(0, 4)}-${w.d.slice(4, 6)}-${w.d.slice(6, 8)}`);
+      const pct = (w.pct || []).slice(11, 15).reduce((a, b) => a + (b || 0), 0);  // 第 11～14 級＝400 張以上
+      return d && !seen.has(d) && (seen.add(d), true) ? { date: d, percent: Math.round(pct * 100) / 100 } : null;
+    }).filter(Boolean);
+  }).catch(() => {}));
+  if (!jobs.length) return;
+  await Promise.all(jobs);
+  if ((tk == null ? currentStock === stock : tabLive('kline', tk, stock)) && klineData.stock === stock.stock_id) redrawKline(true);
 }
 
 async function loadKline(silent = false) {
@@ -990,8 +1022,10 @@ async function loadKline(silent = false) {
     if (!priceRows.length) { container.innerHTML = '<div class="error-msg">查無資料</div>'; return; }
     const drawRows = chartRows || priceRows;
     if (!drawRows.length) { container.innerHTML = '<div class="error-msg">查無分K資料</div>'; return; }
-    klineData = { price: drawRows, inst: instRows, holding: [] };
+    const keep = klineData.stock === stock.stock_id ? klineData : {};
+    klineData = { price: drawRows, inst: instRows, holding: keep.holding || [], margin: keep.range === klineRange ? (keep.margin || []) : [], stock: stock.stock_id, range: klineRange };
     redrawKline(silent);
+    if (!intraday) klineLoadLayers(stock, tk);
 
     const last = priceRows[priceRows.length - 1];
     const prev = priceRows.length > 1 ? priceRows[priceRows.length - 2] : last;
@@ -1165,11 +1199,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $$('#kline-layers [data-layer]').forEach(btn => {
+    const k0 = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding' }[btn.dataset.layer];
+    btn.classList.toggle('active', !!klineOpts[k0]);
     btn.addEventListener('click', () => {
-      const key = { inst: 'showInst', bband: 'showBBand' }[btn.dataset.layer];
+      const key = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding' }[btn.dataset.layer];
       klineOpts[key] = !klineOpts[key];
       btn.classList.toggle('active', klineOpts[key]);
+      if (key === 'showMargin') localStorage.setItem('kl_margin', klineOpts[key] ? '1' : '0');
+      if (key === 'showHolding') localStorage.setItem('kl_hold', klineOpts[key] ? '1' : '0');
       redrawKline();
+      if ((key === 'showMargin' || key === 'showHolding') && klineOpts[key] && currentStock && klineInterval === '1d') klineLoadLayers(currentStock, null);
     });
   });
 
