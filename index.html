@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '70';
+window.APP_V = '71';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -39,6 +39,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
     <div class="idx-bar" id="idx-bar" hidden></div>
     <div class="temp-bar" id="temp-bar" hidden></div>
+    <div class="glb-bar" id="glb-bar" hidden></div>
     <div class="group-bar">
       <div class="group-tabs" id="group-tabs"></div>
       <button class="icon-btn" id="btn-group-menu" aria-label="管理清單">⋯</button>
@@ -322,6 +323,22 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
     </div>
   </section>
 
+  <!-- ================= 國際盤（2026-11-21）：台指期（含夜盤）、美股指數與期貨、台股 ADR ================= -->
+  <section id="screen-global" class="screen">
+    <div class="topbar">
+      <button class="back-btn" id="btn-glb-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">國際盤・電子盤</div>
+      <div class="spacer"></div>
+    </div>
+    <div class="pf-scroll">
+      <div id="glb-body"></div>
+      <div class="section-label">當天走勢</div>
+      <div class="chart-container" id="glb-chart" style="height:220px"></div>
+      <p class="hint" id="glb-chart-note" style="padding:4px 16px 8px">點上面任一列，看當天走勢。</p>
+      <p class="hint" style="padding:0 16px 20px">資料：鉅亨網（台指期、美股指數、ADR、匯率）、Yahoo（美股期貨，約 5 分鐘一點）。每 20 秒更新，資訊整理非投資建議。</p>
+    </div>
+  </section>
+
   <!-- ================= 大盤（2026-10-22）：指數走勢／K線、三大法人買賣金額、融資融券 ================= -->
   <section id="screen-index" class="screen">
     <div class="topbar">
@@ -446,7 +463,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>

@@ -142,6 +142,21 @@ html, body {
 .chart-container.tall { height: 380px; }
 
 .legend-row { display: flex; gap: 14px; padding: 4px 16px 8px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
+/* 國際盤（2026-11-21） */
+.glb-bar { display: flex; align-items: center; gap: 12px; padding: 6px 16px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.glb-bar[hidden] { display: none; }
+.glb-bar::-webkit-scrollbar { display: none; }
+.gb-more { margin-left: auto; color: var(--text-dim); font-size: 12px; padding-left: 8px; }
+.glb-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.glb-row.on { background: rgba(242,199,68,0.10); }
+.glb-name { display: flex; flex-direction: column; font-size: 14px; min-width: 0; }
+.glb-name .dim { font-size: 11px; }
+.glb-val { display: flex; flex-direction: column; align-items: flex-end; font-size: 12px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.glb-val b { font-size: 16px; }
+.glb-val .up, .glb-val b.up { color: #e6413c; } .glb-val .down, .glb-val b.down { color: #1fa363; }
+.glb-note { padding: 6px 16px; font-size: 12px; color: var(--text-dim); }
+.glb-note b.up { color: #e6413c; } .glb-note b.down { color: #1fa363; }
+.glb-bar .up, .glb-bar b.up { color: #e6413c; } .glb-bar .down, .glb-bar b.down { color: #1fa363; }
 /* ETF（2026-11-20） */
 .tab-btn[hidden] { display: none !important; }
 #rk-cat, #rk-sub { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
