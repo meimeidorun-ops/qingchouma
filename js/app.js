@@ -399,6 +399,7 @@ async function paintDetailScore(stock) {
   box.hidden = true;
   if (typeof paintDetailTemp === 'function') paintDetailTemp(stock);
   if (typeof paintDetailFlags === 'function') paintDetailFlags(stock);
+  if (typeof paintChipSummary === 'function') paintChipSummary(stock);
   let it = scoreMap.get(stock.stock_id);
   if (!it) {
     try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) {}

@@ -149,6 +149,14 @@ html, body {
 .news-time { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
 .mh-more { padding: 0 12px 8px; font-size: 13px; }
 .mh-more summary { cursor: pointer; color: var(--text-dim); padding: 4px 4px 8px; }
+/* 籌碼總覽（2026-11-21） */
+.cs-tbl { cursor: pointer; }
+.cs-tbl td, .cs-tbl th { padding: 6px 8px; }
+.cs-date { font-size: 11px; color: var(--text-dim); padding: 2px 16px 6px; text-align: right; }
+.cs-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 4px 12px; }
+.cs-pill { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; font-size: 11px; cursor: pointer; }
+.cs-pill b { font-size: 14px; margin: 1px 0; }
+.cs-pill .up { color: #e6413c; } .cs-pill .down { color: #1fa363; }
 /* 公告（2026-11-21） */
 .dt-flags { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 16px 6px; cursor: pointer; }
 .dt-flags[hidden] { display: none; }
