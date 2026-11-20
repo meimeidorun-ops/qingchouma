@@ -12,6 +12,7 @@ const SCR_GROUPS = [
   ]],
   ['基本面', [
     ['score70', '評分 ≥70'], ['revHigh', '營收創新高（≥80）'], ['revTurn', '營收轉折（≥80）'], ['pe15', '本益比 <15'],
+    ['yld5', '殖利率 ≥5%'], ['yoy20', '月營收年增 ≥20%'], ['rev12', '月營收創一年新高'], ['pb1', '淨值比 <1'],
   ]],
   ['範圍', [['liq', '成交值 ≥1 億'], ['liq5', '成交值 ≥5 億'], ['tse', '只看上市'], ['otc', '只看上櫃']]],
 ];
@@ -31,7 +32,7 @@ function scrPanelHtml() {
 }
 
 async function scrRows(day, px) {
-  const [inst, mg, sc, tp, dtd] = await Promise.all(['inst', 'margin', 'scores', 'temp', 'dt'].map(n => Mk.load(n).catch(() => null)));
+  const [inst, mg, sc, tp, dtd, val] = await Promise.all(['inst', 'margin', 'scores', 'temp', 'dt', 'val'].map(n => Mk.load(n).catch(() => null)));
   const DL = dtd ? dtd.days.length : 0;
   const on = Scr.on, L = inst ? inst.days.length : 0, ML = mg ? mg.days.length : 0;
   const run = (a, sgn) => { let n = 0; while (a && n < a.length && a[a.length - 1 - n] * sgn > 0) n++; return n; };
@@ -81,6 +82,12 @@ async function scrRows(day, px) {
     if (need('cold') && !(T[0] < 40)) continue;
     // 量增：今天成交值 ≥ 前 20 日平均 ×1.5（day.json 第 10 欄；盤中用即時成交值，早盤自然比較難達到）
     if (need('volUp') && !(d.money20 && p.money >= d.money20 * 1.5)) continue;
+    const V = val && val.s[id];  // [本益比, 殖利率, 淨值比, 營收億, 月增, 年增, 累計年增, 創N月新高, 近3月年增]
+    if ((need('yld5') || need('yoy20') || need('rev12') || need('pb1')) && !V) continue;
+    if (need('yld5') && !(V[1] >= 5)) continue;
+    if (need('pb1') && !(V[2] > 0 && V[2] < 1)) continue;
+    if (need('yoy20') && !(V[5] >= 20 && V[3] >= 1)) continue;
+    if (need('rev12') && !(V[7] >= 12)) continue;
     const S = sc && sc.items[id];  // [積極, 穩健, 營收創高, 轉折, 近高點, 估值, 低波動, 本益比]
     if ((need('score70') || need('revHigh') || need('revTurn')) && !S) continue;
     if (need('score70') && !(S[0] >= 70)) continue;

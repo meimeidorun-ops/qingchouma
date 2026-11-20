@@ -34,9 +34,51 @@ async function loadRevenue() {
 }
 
 // ---- 獲利 ----
+// 歷年股利（2026-11-21）：FinMind TaiwanStockDividend（手機快取 7 天），獲利頁籤與 ETF 頁籤下方都有
+async function loadDividends(stock, boxSel, tabKey, tk) {
+  const box = $(boxSel);
+  if (!box) return;
+  box.innerHTML = '<div class="section-label">歷年股利</div><div class="loading" style="padding:10px">載入中…</div>';
+  try {
+    const start = `${new Date().getFullYear() - 8}-01-01`;
+    const rows = await finmindGet('TaiwanStockDividend', { data_id: stock.stock_id, start_date: start }, { ttlMs: 7 * 86400e3 });
+    if (!tabLive(tabKey, tk, stock)) return;
+    const num = v => Number(v) || 0;
+    const list = (rows || []).map(r => ({
+      period: String(r.year || '').trim(),
+      cash: num(r.CashEarningsDistribution) + num(r.CashStatutorySurplus),
+      stock: num(r.StockEarningsDistribution) + num(r.StockStatutorySurplus),
+      exDate: r.CashExDividendTradingDate || r.StockExDividendTradingDate || '',
+      payDate: r.CashDividendPaymentDate || '',
+    })).filter(r => r.cash || r.stock).sort((a, b) => (a.exDate || a.period) < (b.exDate || b.period) ? 1 : -1);
+    if (!list.length) { box.innerHTML = '<div class="section-label">歷年股利</div><div class="empty-hint" style="padding:12px">查無配息紀錄</div>'; return; }
+    // 依年度（除息日的年份）加總，算「近一年配息」與用目前股價的殖利率
+    const byYear = new Map();
+    for (const r of list) { const y = (r.exDate || '').slice(0, 4) || r.period; const v = byYear.get(y) || { cash: 0, stock: 0, n: 0 }; v.cash += r.cash; v.stock += r.stock; v.n++; byYear.set(y, v); }
+    const priceTxt = ($('#dq-price') || {}).textContent || '';
+    const price = parseFloat(priceTxt.replace(/,/g, ''));
+    const lastYear = new Date(Date.now() - 365 * 86400e3).toISOString().slice(0, 10);
+    const ttm = list.filter(r => r.exDate && r.exDate >= lastYear).reduce((a, r) => a + r.cash, 0);
+    const years = [...byYear.entries()].sort((a, b) => a[0] < b[0] ? 1 : -1).slice(0, 8);
+    box.innerHTML = `<div class="section-label">歷年股利</div>
+      <div class="branch-summary"><span>近一年現金股利 <b>${numFmt(ttm, 2)}</b> 元</span>${price > 0 && ttm ? `<span>以目前股價殖利率 <b>${(ttm / price * 100).toFixed(2)}%</b></span>` : ''}
+        <span>連續配息 <b>${(() => { let n = 0; const ys = [...byYear.keys()].filter(y => /^\d{4}$/.test(y)).sort().reverse(); for (let i = 0; i < ys.length; i++) { if (byYear.get(ys[i]).cash > 0 && (i === 0 || Number(ys[i - 1]) - Number(ys[i]) === 1)) n++; else break; } return n; })()}</b> 年</span></div>
+      <div class="table-wrap"><table class="data-table compact"><thead><tr><th>年度（除息年）</th><th>現金股利</th><th>股票股利</th><th>次數</th></tr></thead><tbody>
+        ${years.map(([y, v]) => `<tr><td>${y}</td><td>${numFmt(v.cash, 2)}</td><td>${v.stock ? numFmt(v.stock, 2) : '—'}</td><td>${v.n}</td></tr>`).join('')}
+      </tbody></table></div>
+      <details class="mh-more"><summary>每次配息明細</summary><div class="table-wrap"><table class="data-table compact"><thead><tr><th>期別</th><th>除息日</th><th>現金</th><th>股票</th><th>發放日</th></tr></thead><tbody>
+        ${list.slice(0, 24).map(r => `<tr><td>${r.period}</td><td>${r.exDate ? r.exDate.slice(2) : '—'}</td><td>${r.cash ? numFmt(r.cash, 3) : '—'}</td><td>${r.stock ? numFmt(r.stock, 2) : '—'}</td><td>${r.payDate ? r.payDate.slice(2) : '—'}</td></tr>`).join('')}
+      </tbody></table></div></details>
+      <p class="hint" style="padding:2px 16px 14px">資料：FinMind（公開資訊觀測站）。股票股利單位為元（每股面額 10 元，1 元＝配 100 股／張）。</p>`;
+  } catch (e) {
+    if (tabLive(tabKey, tk, stock)) box.innerHTML = `<div class="section-label">歷年股利</div><div class="error-msg">載入失敗：${e.message}</div>`;
+  }
+}
+
 async function loadProfit() {
   const container = $('#chart-profit');
   const stock = currentStock, tk = tabTicket('profit');
+  loadDividends(stock, '#div-profit', 'profit', tk);
   container.innerHTML = '<div class="loading">載入中…</div>';
   try {
     const rows = await Api.financials(stock.stock_id, 3);

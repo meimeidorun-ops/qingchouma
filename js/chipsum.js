@@ -5,7 +5,7 @@ async function paintChipSummary(stock) {
   if (!box) return;
   box.innerHTML = '';
   const id = stock.stock_id;
-  const [inst, mg, dtd, td] = await Promise.all(['inst', 'margin', 'dt', 'tdcc'].map(n => Mk.load(n).catch(() => null)));
+  const [inst, mg, dtd, td, val] = await Promise.all(['inst', 'margin', 'dt', 'tdcc', 'val'].map(n => Mk.load(n).catch(() => null)));
   if (currentStock !== stock) return;
   const sum = (a, n) => { if (!a) return null; let s = 0, k = 0; for (let i = Math.max(0, a.length - n); i < a.length; i++) if (a[i] != null) { s += a[i]; k++; } return k ? s : null; };
   const run = (a) => { if (!a || !a.length) return 0; const sg = Math.sign(a[a.length - 1] || 0); if (!sg) return 0; let n = 0; while (n < a.length && Math.sign(a[a.length - 1 - n] || 0) === sg) n++; return sg * n; };
@@ -40,6 +40,16 @@ async function paintChipSummary(stock) {
     if (b != null) pills.push(['holders', '大戶 400 張↑', `${b.toFixed(1)}%`, b1 != null ? `週 ${b - b1 >= 0 ? '+' : ''}${(b - b1).toFixed(2)}` : `${td.weeks[W - 1].slice(5)} 週`, b1 != null ? b - b1 : 0]);
     if (p) pills.push(['holders', '股東人數', numFmt(p), p1 ? `週 ${p - p1 >= 0 ? '+' : ''}${numFmt(p - p1)}` : '', p1 ? -(p - p1) : 0]);
   }
+  // 估值與月營收（mk/val.json）
+  const fund = [];
+  const V = val && val.s[id];
+  if (V) {
+    const [pe, yld, pb, rev, mom, yoy, ytd, hi] = V;
+    if (pe != null || yld != null) fund.push(['profit', '本益比', pe != null ? `${pe} 倍` : '—', `殖利率 ${yld ?? '—'}%｜淨值比 ${pb ?? '—'}`, 0]);
+    if (rev != null) fund.push(['revenue', `${val.revYm ? Number(val.revYm.slice(5)) + ' 月' : ''}營收`, `${numFmt(rev, rev >= 100 ? 0 : 1)} 億`, `年增 ${yoy == null ? '—' : (yoy > 0 ? '+' : '') + yoy + '%'}`, yoy || 0]);
+    if (ytd != null) fund.push(['revenue', '累計營收年增', `${ytd > 0 ? '+' : ''}${ytd}%`, hi >= 12 ? (hi >= 120 ? '當月創歷史新高' : `當月創 ${hi} 個月新高`) : `月增 ${mom == null ? '—' : (mom > 0 ? '+' : '') + mom + '%'}`, ytd]);
+  }
+  pills.push(...fund);
   if (!instHtml && !pills.length) return;
   // 融資、借券增加對股價是偏空的訊號 → 顏色反過來（增加綠、減少紅）
   box.innerHTML = `<div class="section-label">籌碼總覽</div>${instHtml}

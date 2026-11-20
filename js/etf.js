@@ -37,6 +37,7 @@ async function loadEtf() {
   const stock = currentStock, tk = tabTicket('etf');
   const box = $('#etf-body');
   box.innerHTML = '<div class="loading">載入中…</div>';
+  if (typeof loadDividends === 'function') loadDividends(stock, '#div-etf', 'etf', tk);
   try {
     const [m, H] = await Promise.all([etfData(), Mk.load('etf_hist').catch(() => null)]);
     if (!tabLive('etf', tk, stock)) return;

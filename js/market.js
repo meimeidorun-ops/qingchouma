@@ -198,7 +198,7 @@ async function paintIndexBar() {
 // ---------------------------------------------------------------- 📊 全市場排行
 const Rank = { cat: localStorage.getItem('rk_cat') || 'up', dir: localStorage.getItem('rk_dir') || 'buy', n: Number(localStorage.getItem('rk_n') || 1),
   noEtf: localStorage.getItem('rk_noetf') === '1', liq: localStorage.getItem('rk_liq') !== '0', safe: false, seq: 0 };
-const RK_CATS = [['screen', '🔎選股'], ['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['dt', '當沖'], ['sbl', '借券'], ['big', '大戶'], ['ann', '公告'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
+const RK_CATS = [['screen', '🔎選股'], ['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['dt', '當沖'], ['sbl', '借券'], ['big', '大戶'], ['val', '估值'], ['rev', '營收'], ['ann', '公告'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
 const RK_SEC = [['chg', '漲跌幅'], ['money', '成交值'], ['f', '外資買超'], ['t', '投信買超']];
 const RK_ETF = [['prem', '溢價'], ['disc', '折價'], ['in', '資金流入'], ['out', '資金流出'], ['size', '規模'], ['in5', '5日流入'], ['out5', '5日流出']];
 const rkIsPrice = () => ['up', 'down', 'money'].includes(Rank.cat);
@@ -227,6 +227,12 @@ function paintRankBars() {
   } else if (Rank.cat === 'sbl') {
     if (!['up5', 'dn5', 'sell'].includes(Rank.sblk)) Rank.sblk = 'up5';
     sub = [['up5', '5日餘額增加'], ['dn5', '5日回補（減少）'], ['sell', '今天借券賣出']].map(([v, l]) => btn('sblk', v, l, Rank.sblk === v)).join('');
+  } else if (Rank.cat === 'val') {
+    if (!['yld', 'pe', 'pb'].includes(Rank.valk)) Rank.valk = 'yld';
+    sub = [['yld', '殖利率最高'], ['pe', '本益比最低'], ['pb', '淨值比最低']].map(([v, l]) => btn('valk', v, l, Rank.valk === v)).join('');
+  } else if (Rank.cat === 'rev') {
+    if (!['yoy', 'mom', 'ytd', 'y3', 'ath', 'high12'].includes(Rank.revk)) Rank.revk = 'yoy';
+    sub = [['yoy', '單月年增'], ['y3', '近3月年增'], ['ytd', '累計年增'], ['mom', '月增'], ['ath', '創歷史新高'], ['high12', '創一年新高']].map(([v, l]) => btn('revk', v, l, Rank.revk === v)).join('');
   } else if (Rank.cat === 'ann') {
     if (!['punish', 'notice', 'exdiv'].includes(Rank.annk)) Rank.annk = 'punish';
     sub = [['punish', '處置股'], ['notice', '注意股'], ['exdiv', '除權息預告']].map(([v, l]) => btn('annk', v, l, Rank.annk === v)).join('');
@@ -241,7 +247,7 @@ function paintRankBars() {
     if (!RK_SEC.some(([v]) => v === Rank.sec)) Rank.sec = 'chg';
     sub = (Rank.secCode ? btn('secback', '1', '‹ 全部類股', false) : '') + RK_SEC.map(([v, l]) => btn('sec', v, l, Rank.sec === v)).join('');
   }
-  if (!['score', 'etf', 'sector', 'screen', 'dt', 'sbl', 'big', 'ann'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
+  if (!['score', 'etf', 'sector', 'screen', 'dt', 'sbl', 'big', 'ann', 'val', 'rev'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
   $('#rk-sub').innerHTML = sub;
 }
 
@@ -362,6 +368,33 @@ async function openRank() {
       const mk = d.mkt.tse[L - 1], mo = d.mkt.otc[L - 1];
       note = Rank.cat === 'dt' ? `當沖占比｜${d.days[L - 1].slice(5)}｜大盤 上市 ${mk ?? '—'}%、上櫃 ${mo ?? '—'}%｜成交值 ≥1 億`
         : `借券賣出｜${d.days[L - 1].slice(5)}｜依金額排序（借券餘額增加＝空方部位變大）`;
+    } else if (Rank.cat === 'val' || Rank.cat === 'rev') {
+      // 估值／營收（mk/val.json）：s[id]=[本益比, 殖利率, 淨值比, 營收億, 月增%, 年增%, 累計年增%, 創N月新高, 近3月年增%]
+      const d = await Mk.load('val');
+      const sg = v => v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`;
+      for (const [id, v] of Object.entries(d.s)) {
+        const p0 = day.get(id);
+        if (!p0 || !(p0.money >= 30)) continue;  // 成交值 3,000 萬以下不排（冷門股數字常失真）
+        const [pe, yld, pb, rev, mom, yoy, ytd, hi, y3] = v;
+        let key = null, main = '';
+        if (Rank.cat === 'val') {
+          if (Rank.valk === 'yld') { if (!(yld > 0 && yld <= 30)) continue; key = yld; main = `殖利率 ${yld}%`; }  // 超過 30% 多半是減資退還、一次性配發，不排
+          else if (Rank.valk === 'pe') { if (!(pe > 0)) continue; key = -pe; main = `本益比 ${pe}`; }
+          else { if (!(pb > 0)) continue; key = -pb; main = `淨值比 ${pb}`; }
+        } else {
+          if (rev == null) continue;
+          const k = Rank.revk;
+          if (k === 'ath') { if (!(hi >= 60)) continue; key = yoy ?? 0; main = hi >= 120 ? '歷史新高' : `${Math.floor(hi / 12)} 年新高`; }
+          else if (k === 'high12') { if (!(hi >= 12)) continue; key = yoy ?? 0; main = `${hi >= 24 ? Math.floor(hi / 12) + ' 年' : '一年'}新高`; }
+          else { const x = { yoy, mom, ytd, y3 }[k]; if (x == null || rev < 1) continue; key = x; main = sg(x); }  // 月營收 1 億以下不排（基期太小）
+        }
+        rows.push({ id, name: p0.name, px: px.get(id) || p0, v: key, cls: Rank.cat === 'rev' ? signClass(key) : 'flat', main,
+          sub: Rank.cat === 'val' ? `本益比 ${pe ?? '—'}｜殖利率 ${yld ?? '—'}%｜淨值比 ${pb ?? '—'}`
+            : `${d.revYm ? d.revYm.slice(5) + ' 月' : ''}營收 ${rev} 億｜月增 ${sg(mom)}｜年增 ${sg(yoy)}｜累計 ${sg(ytd)}${hi >= 12 ? `｜${hi >= 120 ? '歷史' : hi + ' 個月'}新高` : ''}` });
+      }
+      rows.sort((a, b) => b.v - a.v);
+      note = Rank.cat === 'val' ? `估值｜${d.perDate ? d.perDate.slice(5) : ''}（證交所／櫃買公布，殖利率用最近一年股利）｜成交值 ≥3,000 萬`
+        : `月營收｜${d.revYm || ''}｜年增＝跟去年同月比；「創新高」依年增排序｜成交值 ≥3,000 萬、月營收 ≥1 億`;
     } else if (Rank.cat === 'ann') {
       // 公告：處置股、注意股、除權息預告（mk/notice.json）
       const n = await Mk.load('notice');
@@ -552,6 +585,8 @@ $('#rk-sub').addEventListener('click', e => {
   else if (ds.dtk) Rank.dtk = ds.dtk;
   else if (ds.bigk) Rank.bigk = ds.bigk;
   else if (ds.annk) Rank.annk = ds.annk;
+  else if (ds.valk) Rank.valk = ds.valk;
+  else if (ds.revk) Rank.revk = ds.revk;
   else if (ds.sblk) Rank.sblk = ds.sblk;
   else if (ds.secback) Rank.secCode = null;
   else if (ds.toggle === 'noetf') { Rank.noEtf = !Rank.noEtf; localStorage.setItem('rk_noetf', Rank.noEtf ? '1' : '0'); }
