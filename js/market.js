@@ -198,7 +198,8 @@ async function paintIndexBar() {
 // ---------------------------------------------------------------- 📊 全市場排行
 const Rank = { cat: localStorage.getItem('rk_cat') || 'up', dir: localStorage.getItem('rk_dir') || 'buy', n: Number(localStorage.getItem('rk_n') || 1),
   noEtf: localStorage.getItem('rk_noetf') === '1', liq: localStorage.getItem('rk_liq') !== '0', safe: false, seq: 0 };
-const RK_CATS = [['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['etf', 'ETF'], ['score', '評分']];
+const RK_CATS = [['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
+const RK_SEC = [['chg', '漲跌幅'], ['money', '成交值'], ['f', '外資買超'], ['t', '投信買超']];
 const RK_ETF = [['prem', '溢價'], ['disc', '折價'], ['in', '資金流入'], ['out', '資金流出'], ['size', '規模'], ['in5', '5日流入'], ['out5', '5日流出']];
 const rkIsPrice = () => ['up', 'down', 'money'].includes(Rank.cat);
 const rkIsInst = () => ['f', 't', 'd', 'ft', 'fta'].includes(Rank.cat);
@@ -223,8 +224,11 @@ function paintRankBars() {
   } else if (Rank.cat === 'etf') {
     if (!RK_ETF.some(([v]) => v === Rank.etf)) Rank.etf = 'prem';
     sub = RK_ETF.map(([v, l]) => btn('etf', v, l, Rank.etf === v)).join('');
+  } else if (Rank.cat === 'sector') {
+    if (!RK_SEC.some(([v]) => v === Rank.sec)) Rank.sec = 'chg';
+    sub = (Rank.secCode ? btn('secback', '1', '‹ 全部類股', false) : '') + RK_SEC.map(([v, l]) => btn('sec', v, l, Rank.sec === v)).join('');
   }
-  if (Rank.cat !== 'score' && Rank.cat !== 'etf') sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
+  if (!['score', 'etf', 'sector'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
   $('#rk-sub').innerHTML = sub;
 }
 
@@ -241,7 +245,7 @@ async function openRank() {
     let rows = [], note = '', unit = '';
     // 價格：盤中（或行情檔還沒更新到今天）用鉅亨即時；不然用收盤檔
     let px = day, pxNote = `收盤 ${dayDate.slice(5)}`;
-    if (rkIsPrice() || rkIsInst() || Rank.cat === 'margin') {
+    if (rkIsPrice() || rkIsInst() || Rank.cat === 'margin' || Rank.cat === 'sector') {
       try {
         const live = await Mk.live();
         const any = live.values().next().value;
@@ -309,6 +313,47 @@ async function openRank() {
       rows = rows.map(r => ({ id: r.id, name: day.get(r.id).name, px: px.get(r.id) || day.get(r.id), cls: sgn > 0 ? 'up' : 'down', main: pctFmt(r.v, 1),
         sub: `${r.lots > 0 ? '+' : ''}${numFmt(r.lots)} 張｜餘額 ${numFmt(r.bal)} 張` }));
       note = `融資餘額增減%｜資料日 ${d.days[L - 1].slice(5)}，近 ${back} 日（餘額 ≥500 張）｜更新 ${d.updated.slice(5)}`;
+    } else if (Rank.cat === 'sector') {
+      // 類股：產業分類 mk/ind.json；價格用即時（成交值前 700 檔有即時，其他用收盤）；法人用 inst.json 最新一天
+      const [I, inst] = await Promise.all([Mk.load('ind'), Mk.load('inst').catch(() => null)]);
+      const k = Rank.sec, L = inst ? inst.days.length : 0;
+      const instAmt = (id, w) => { const a = inst && inst.s[id] && inst.s[id][w]; const c = (px.get(id) || day.get(id) || {}).close; return a && c ? a[L - 1] * c : 0; };  // 張×元＝千元
+      if (!Rank.secCode) {
+        const S = new Map();
+        for (const [id, code] of Object.entries(I.s)) {
+          const p = px.get(id) || day.get(id);
+          if (!p || p.pct == null) continue;
+          let s = S.get(code);
+          if (!s) S.set(code, s = { code, w: 0, wp: 0, up: 0, dn: 0, n: 0, money: 0, f: 0, t: 0, best: null });
+          const m = p.money || 0;
+          s.w += m; s.wp += p.pct * m; s.n++; s.money += m;
+          if (p.pct > 0) s.up++; else if (p.pct < 0) s.dn++;
+          s.f += instAmt(id, 0); s.t += instAmt(id, 1);
+          if (!s.best || m > s.best.m) s.best = { id, m, name: p.name || (day.get(id) || {}).name, pct: p.pct };
+        }
+        rows = [...S.values()].filter(s => s.n >= 3 && s.w > 0).map(s => {
+          const pct = s.wp / s.w;
+          const v = k === 'chg' ? pct : k === 'money' ? s.money : k === 'f' ? s.f : s.t;
+          return { id: s.code, sector: s.code, name: I.names[s.code], px: { close: null, pct }, cls: k === 'chg' ? signClass(pct) : signClass(v), v,
+            main: k === 'chg' ? '' : k === 'money' ? `${numFmt(s.money / 100, 0)} 億` : `${v > 0 ? '+' : ''}${numFmt(v / 1e5, 1)} 億`,
+            sub: `${s.n} 檔｜漲 ${s.up}・跌 ${s.dn}｜成交 ${numFmt(s.money / 100, 0)} 億｜外資 ${s.f >= 0 ? '+' : ''}${numFmt(s.f / 1e5, 1)} 億｜投信 ${s.t >= 0 ? '+' : ''}${numFmt(s.t / 1e5, 1)} 億${s.best ? `｜龍頭 ${s.best.name || s.best.id}` : ''}` };
+        });
+        rows.sort((a, b) => b.v - a.v);
+        note = `類股｜${pxNote}｜漲跌幅＝成交值加權平均；法人＝${inst ? inst.days[L - 1].slice(5) : '—'} 買賣超金額｜點類股看成分股`;
+      } else {
+        for (const [id, code] of Object.entries(I.s)) {
+          if (code !== Rank.secCode) continue;
+          const p = px.get(id) || day.get(id);
+          if (!p || p.pct == null) continue;
+          const f = instAmt(id, 0), t = instAmt(id, 1);
+          const v = k === 'chg' ? p.pct : k === 'money' ? (p.money || 0) : k === 'f' ? f : t;
+          rows.push({ id, name: p.name || (day.get(id) || {}).name, px: p, cls: signClass(v), v,
+            main: k === 'chg' ? '' : k === 'money' ? `${numFmt((p.money || 0) / 100, 1)} 億` : `${v > 0 ? '+' : ''}${numFmt(v / 1e5, 1)} 億`,
+            sub: `成交 ${numFmt((p.money || 0) / 100, 1)} 億｜外資 ${f >= 0 ? '+' : ''}${numFmt(f / 1e5, 1)} 億｜投信 ${t >= 0 ? '+' : ''}${numFmt(t / 1e5, 1)} 億` });
+        }
+        rows.sort((a, b) => b.v - a.v);
+        note = `${I.names[Rank.secCode]}（${rows.length} 檔）｜${pxNote}`;
+      }
     } else if (Rank.cat === 'etf') {
       // ETF：即時折溢價（快速後端）或收盤檔；5 日流入用 etf_hist 的單位數變化 × 淨值
       const m = await etfData();
@@ -358,13 +403,21 @@ async function openRank() {
       const p = r.px || {};
       return `<div class="rk-row" data-i="${i}">
         <span class="rk-no">${i + 1}</span>
-        <div class="rk-name"><b>${mkEsc(r.name || r.id)}</b>${r.score != null ? ` <span class="sc-badge has ${scoreClass(r.score)}" data-score="1">${r.score}</span>` : ''}<br><span class="dim">${r.id}${watched.has(r.id) ? ' ★' : ''}　${r.sub}</span></div>
-        <div class="rk-val"><b class="${signClass(p.pct)}">${p.close != null ? numFmt(p.close, 2) : '—'}</b> <span class="${signClass(p.pct)}">${p.pct != null ? pctFmt(p.pct) : ''}</span>${r.main ? `<br><b class="${r.cls}">${r.main}</b>` : ''}</div>
+        <div class="rk-name"><b>${mkEsc(r.name || r.id)}</b>${r.score != null ? ` <span class="sc-badge has ${scoreClass(r.score)}" data-score="1">${r.score}</span>` : ''}<br><span class="dim">${r.sector ? '' : `${r.id}${watched.has(r.id) ? ' ★' : ''}　`}${r.sub}</span></div>
+        <div class="rk-val">${r.sector ? `<b class="${signClass(p.pct)}">${pctFmt(p.pct)}</b>` : `<b class="${signClass(p.pct)}">${p.close != null ? numFmt(p.close, 2) : '—'}</b> <span class="${signClass(p.pct)}">${p.pct != null ? pctFmt(p.pct) : ''}</span>`}${r.main ? `<br><b class="${r.cls}">${r.main}</b>` : ''}</div>
       </div>`;
     }).join('') + '<div class="branch-note">資料來源：證交所、櫃買中心每天公布的全市場資料（法人約 17:30～19:30、融資約 21:40 更新到這裡），盤中價格來自鉅亨即時報價。資訊整理，非投資建議。</div>';
     box.querySelectorAll('.rk-row').forEach(el => el.addEventListener('click', e => {
       const r = Rank.rows[Number(el.dataset.i)];
       if (e.target.dataset.score) { mkOpenScore(r.id, r.name); return; }
+      if (r.sector) {  // 類股 → 看成分股
+        Rank.secCode = r.sector;
+        $('#rk-list').innerHTML = '';
+        const sc = $('#screen-rank .pf-scroll');
+        if (sc) sc.scrollTop = 0;
+        openRank();
+        return;
+      }
       const sc = $('#screen-rank .pf-scroll');
       Rank.scroll = sc ? sc.scrollTop : 0;
       Rank.fromRank = true;
@@ -382,6 +435,7 @@ $('#rk-cat').addEventListener('click', e => {
   const c = e.target.dataset.cat;
   if (!c) return;
   Rank.cat = c;
+  Rank.secCode = null;
   localStorage.setItem('rk_cat', c);
   if (!rkIsInst() && Rank.dir.startsWith('streak')) Rank.dir = 'buy';
   $('#rk-list').innerHTML = '';
@@ -393,6 +447,8 @@ $('#rk-sub').addEventListener('click', e => {
   else if (ds.n) { Rank.n = Number(ds.n); localStorage.setItem('rk_n', ds.n); }
   else if (ds.safe) Rank.safe = ds.safe === '1';
   else if (ds.etf) Rank.etf = ds.etf;
+  else if (ds.sec) Rank.sec = ds.sec;
+  else if (ds.secback) Rank.secCode = null;
   else if (ds.toggle === 'noetf') { Rank.noEtf = !Rank.noEtf; localStorage.setItem('rk_noetf', Rank.noEtf ? '1' : '0'); }
   else if (ds.toggle === 'liq') { Rank.liq = !Rank.liq; localStorage.setItem('rk_liq', Rank.liq ? '1' : '0'); }
   else return;

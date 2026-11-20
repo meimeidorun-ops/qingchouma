@@ -144,6 +144,9 @@ html, body {
 .legend-row { display: flex; gap: 14px; padding: 4px 16px 8px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
 /* ETF（2026-11-20） */
 .tab-btn[hidden] { display: none !important; }
+#rk-cat, #rk-sub { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+#rk-cat::-webkit-scrollbar, #rk-sub::-webkit-scrollbar { display: none; }
+#rk-cat .range-btn, #rk-sub .range-btn { flex-shrink: 0; white-space: nowrap; }
 .etf-card { padding: 10px 16px 4px; }
 .etf-big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .etf-big b { font-size: 26px; }
