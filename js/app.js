@@ -1278,6 +1278,14 @@ document.addEventListener('DOMContentLoaded', () => {
       loadInstitutional();
     });
   });
+  $$('#inst-who .range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('#inst-who .range-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      instWho = btn.dataset.who;
+      loadInstitutional();
+    });
+  });
 
   $('#btn-save-eps').addEventListener('click', async () => {
     if (!currentStock) return;

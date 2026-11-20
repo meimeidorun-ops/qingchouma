@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '76';
+window.APP_V = '77';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -145,6 +145,12 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
         <div class="range-bar" id="inst-unit" style="padding-top:0">
           <button class="range-btn active" data-unit="1000">張數</button>
           <button class="range-btn" data-unit="1">股數</button>
+        </div>
+        <div class="range-bar" id="inst-who" style="padding-top:0">
+          <button class="range-btn active" data-who="all">合計</button>
+          <button class="range-btn" data-who="f">外資</button>
+          <button class="range-btn" data-who="t">投信</button>
+          <button class="range-btn" data-who="d">自營商</button>
         </div>
         <div class="legend-row">
           <span><span class="dot" style="background:#e6413c"></span>單日合計買超</span>

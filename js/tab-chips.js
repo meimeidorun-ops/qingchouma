@@ -1,6 +1,9 @@
 // 個股頁「籌碼」頁籤：法人買賣超、大戶、資券（融資融券）、分點。從 app.js 拆出（2026-09-29），共用 app.js 的全域狀態與工具函式。
 
 // ---- 法人買賣超 ----
+// 2026-11-21：圖可以切 合計／外資／投信／自營商（表格照舊四欄都列）
+let instWho = 'all';
+const INST_NAMES = { f: ['Foreign_Investor', 'Foreign_Dealer_Self'], t: ['Investment_Trust'], d: ['Dealer_self', 'Dealer_Hedging', 'Dealer'] };
 async function loadInstitutional() {
   const container = $('#chart-inst');
   const stock = currentStock, tk = tabTicket('inst');
@@ -9,7 +12,8 @@ async function loadInstitutional() {
     const rows = await Api.institutional(stock.stock_id, instRange);
     if (!tabLive('inst', tk, stock)) return;
     if (!rows.length) { container.innerHTML = '<div class="error-msg">查無資料</div>'; return; }
-    charts.inst = renderInstitutional(container, rows, instUnit);
+    const pick = instWho === 'all' ? rows : rows.filter(r => INST_NAMES[instWho].includes(r.name));
+    charts.inst = renderInstitutional(container, pick.length ? pick : rows, instUnit);
     $('#inst-table-label').textContent = instUnit === 1000 ? '近期明細（張）' : '近期明細（股）';
 
     // build per-date table: 外資/投信/自營商(含避險合計)/合計
