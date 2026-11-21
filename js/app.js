@@ -9,7 +9,8 @@ let branchPeriod = 1;
 let marginRange = 180;
 let klineData = { price: [], inst: [], holding: [], margin: [] };
 let klineOpts = { showInst: true, showBBand: false, indicator: null,
-  showMargin: localStorage.getItem('kl_margin') === '1', showHolding: localStorage.getItem('kl_hold') === '1' };
+  showMargin: localStorage.getItem('kl_margin') === '1', showHolding: localStorage.getItem('kl_hold') === '1',
+  showMaExtra: localStorage.getItem('kl_ma') === '1' };
 let klineInterval = '1d';
 let instUnit = 1000; // 1000 = 張, 1 = 股
 let loadedTabs = { rt: false, kline: false, inst: false, margin: false, branch: false, revenue: false, profit: false, holders: false };
@@ -936,16 +937,23 @@ async function loadRealtime(silent = false) {
     const bars = intra.bars;
     const hi = Math.max(...bars.map(b => b.high));
     const lo = Math.min(...bars.map(b => b.low));
-    const totalLots = bars.reduce((s, b) => s + b.vol, 0) / 1000;
+    // 成交量：有證交所累計量（鉅亨 200013，張）就用它；分 K 加總只有實際的一半左右
+    const totalLots = q && q.vol ? q.vol : bars.reduce((s, b) => s + b.vol, 0) / 1000;
     const cls = (v) => signClass(v - prev);
-    $('#rt-stats').innerHTML = [
+    const hiQ = q && q.high != null ? q.high : hi, loQ = q && q.low != null ? q.low : lo, openQ = q && q.open != null ? q.open : bars[0].open;
+    const cells = [
       ['昨收', numFmt(prev, 2), 'flat'],
-      ['開盤', numFmt(bars[0].open, 2), cls(bars[0].open)],
-      ['成交量(張)', numFmt(totalLots), 'flat'],
-      ['最高', numFmt(hi, 2), cls(hi)],
-      ['最低', numFmt(lo, 2), cls(lo)],
-      ['振幅', pctFmt(((hi - lo) / prev) * 100).replace('+', ''), 'flat'],
-    ].map(([k, v, c]) => `<div><span class="k">${k}</span><span class="v ${c}">${v}</span></div>`).join('');
+      ['開盤', numFmt(openQ, 2), cls(openQ)],
+      ['成交量(張)', numFmt(Math.round(totalLots)), 'flat'],
+      ['最高', numFmt(hiQ, 2), cls(hiQ)],
+      ['最低', numFmt(loQ, 2), cls(loQ)],
+      ['振幅', pctFmt(((hiQ - loQ) / prev) * 100).replace('+', ''), 'flat'],
+    ];
+    // 2026-11-22：漲停／跌停價（鉅亨 75／76）；碰到時標示
+    if (q && q.limitUp) cells.push(['漲停', numFmt(q.limitUp, 2) + (q.price >= q.limitUp ? ' 🔒' : ''), 'up']);
+    if (q && q.limitDown) cells.push(['跌停', numFmt(q.limitDown, 2) + (q.price <= q.limitDown ? ' 🔒' : ''), 'down']);
+    if (q && q.turnover) cells.push(['成交值(億)', numFmt(q.turnover / 1e8, 1), 'flat']);
+    $('#rt-stats').innerHTML = cells.map(([k, v, c]) => `<div><span class="k">${k}</span><span class="v ${c}">${v}</span></div>`).join('');
 
     const lastT = new Date((bars[bars.length - 1].t + intra.gmtoffset) * 1000);
     const hh = String(lastT.getUTCHours()).padStart(2, '0');
@@ -973,6 +981,38 @@ function klineContainerHeight() {
   return 260 + extraPanes * 90;
 }
 
+// 籌碼分布（2026-11-22，仿籌碼K線）：區間內每根日 K 的成交量平均分到「最低～最高」之間的價位，
+// 加總成 24 個價格區段的橫條圖 → 看哪個價位成交最密集（常被當成套牢區或支撐區），標出目前價格。
+function paintVolumeProfile() {
+  const box = $('#kl-vp');
+  if (!box) return;
+  const rows = klineInterval === '1d' ? klineData.price : [];
+  if (rows.length < 10) { box.innerHTML = ''; return; }
+  const lo = Math.min(...rows.map(r => r.min)), hi = Math.max(...rows.map(r => r.max));
+  if (!(hi > lo)) { box.innerHTML = ''; return; }
+  const N = 24, step = (hi - lo) / N, bins = new Array(N).fill(0);
+  for (const r of rows) {
+    const v = (r.Trading_Volume || 0) / 1000, a = r.min, b = r.max;
+    if (!v) continue;
+    if (b <= a) { bins[Math.min(N - 1, Math.floor((a - lo) / step))] += v; continue; }
+    for (let k = Math.max(0, Math.floor((a - lo) / step)); k <= Math.min(N - 1, Math.floor((b - lo) / step)); k++) {
+      const s = Math.max(a, lo + k * step), e = Math.min(b, lo + (k + 1) * step);
+      if (e > s) bins[k] += v * (e - s) / (b - a);
+    }
+  }
+  const max = Math.max(...bins), total = bins.reduce((x, y) => x + y, 0);
+  const last = rows[rows.length - 1].close, curK = Math.min(N - 1, Math.max(0, Math.floor((last - lo) / step)));
+  const peakK = bins.indexOf(max);
+  const above = bins.slice(curK + 1).reduce((x, y) => x + y, 0) / total * 100;  // 目前價以上的成交占比（上方套牢量）
+  const months = Math.round(rows.length / 21);
+  box.innerHTML = `<div class="section-label">籌碼分布（近 ${months} 個月成交量依價格）</div>
+    <div class="vp-wrap">${bins.map((v, k) => k).reverse().map(k => {
+      const p0 = lo + k * step, p1 = p0 + step;
+      return `<div class="vp-row${k === curK ? ' cur' : ''}${k === peakK ? ' peak' : ''}"><span class="vp-px">${numFmt((p0 + p1) / 2, (p1 > 100 ? 0 : 2))}</span><span class="vp-bar"><i style="width:${(bins[k] / max * 100).toFixed(1)}%;background:${p0 > last ? 'rgba(25,211,140,0.55)' : 'rgba(255,77,94,0.55)'}"></i></span><span class="vp-pct">${(bins[k] / total * 100).toFixed(1)}%</span></div>`;
+    }).join('')}</div>
+    <p class="hint" style="padding:4px 16px 14px">最密集價位約 <b>${numFmt(lo + (peakK + 0.5) * step, 2)}</b>（金框）；目前 ${numFmt(last, 2)}（亮框）。目前價格<b>以上</b>的成交量占 ${above.toFixed(0)}%：綠色＝在這些價位買進、現在還沒解套的量（上方賣壓），紅色＝成本比現價低的量。用日 K 估算，不是真實的逐筆持股成本。</p>`;
+}
+
 function redrawKline(keepRange = false) {
   const container = $('#chart-kline');
   if (!klineData.price.length) return;
@@ -987,6 +1027,7 @@ function redrawKline(keepRange = false) {
     showInst: klineOpts.showInst && klineInterval === '1d',
     showHolding: klineOpts.showHolding && klineInterval === '1d',
     showMargin: klineOpts.showMargin && klineInterval === '1d',
+    showMaExtra: klineOpts.showMaExtra,
     showBBand: klineOpts.showBBand,
     indicator: klineOpts.indicator,
     intraday: klineInterval !== '1d',
@@ -994,6 +1035,7 @@ function redrawKline(keepRange = false) {
     infoEl: $('#kl-info'),
     liveLast: klineInterval === '1d' && twMarketOpen(),
   });
+  paintVolumeProfile();
   if (range && charts.kline) {
     try {
       const ch = charts.kline;
@@ -1227,12 +1269,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $$('#kline-layers [data-layer]').forEach(btn => {
-    const k0 = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding' }[btn.dataset.layer];
+    const k0 = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding', ma: 'showMaExtra' }[btn.dataset.layer];
     btn.classList.toggle('active', !!klineOpts[k0]);
     btn.addEventListener('click', () => {
-      const key = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding' }[btn.dataset.layer];
+      const key = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding', ma: 'showMaExtra' }[btn.dataset.layer];
       klineOpts[key] = !klineOpts[key];
       btn.classList.toggle('active', klineOpts[key]);
+      if (key === 'showMaExtra') localStorage.setItem('kl_ma', klineOpts[key] ? '1' : '0');
       if (key === 'showMargin') localStorage.setItem('kl_margin', klineOpts[key] ? '1' : '0');
       if (key === 'showHolding') localStorage.setItem('kl_hold', klineOpts[key] ? '1' : '0');
       redrawKline();

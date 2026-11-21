@@ -120,6 +120,13 @@ function renderKLine(container, priceRows, opts = {}) {
   const maSeries20 = chart.addSeries(LightweightCharts.LineSeries, { color: '#7aa2f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
   maSeries5.setData(seriesLine(dates, ma5));
   maSeries20.setData(seriesLine(dates, ma20));
+  // 2026-11-22：「均線+」再加 MA10、MA60
+  if (opts.showMaExtra) {
+    const m10 = chart.addSeries(LightweightCharts.LineSeries, { color: '#ff8fab', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
+    const m60 = chart.addSeries(LightweightCharts.LineSeries, { color: '#3ee6ff', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
+    m10.setData(seriesLine(dates, sma(closes, 10)));
+    m60.setData(seriesLine(dates, sma(closes, 60)));
+  }
 
   if (showBBand) {
     const bb = computeBollingerBands(closes, 20, 2);
@@ -181,6 +188,11 @@ function renderKLine(container, priceRows, opts = {}) {
     const dSeries = chart.addSeries(LightweightCharts.LineSeries, { color: '#7aa2f7', lineWidth: 1 }, paneIdx);
     kSeries.setData(seriesLine(dates, k));
     dSeries.setData(seriesLine(dates, d));
+    paneIdx++;
+  } else if (indicator === 'rsi') {
+    const rsiS = chart.addSeries(LightweightCharts.LineSeries, { color: '#ffd166', lineWidth: 1, priceFormat: { type: 'price', precision: 1, minMove: 0.1 } }, paneIdx);
+    rsiS.setData(seriesLine(dates, computeRSI(closes, 14)));
+    [70, 30].forEach(v => rsiS.createPriceLine({ price: v, color: v === 70 ? 'rgba(255,77,94,0.5)' : 'rgba(25,211,140,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true }));
     paneIdx++;
   } else if (indicator === 'macd') {
     const { macd, signal, hist } = computeMACD(closes);

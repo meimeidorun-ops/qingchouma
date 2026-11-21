@@ -171,6 +171,16 @@ html, body {
 .nf-tag.bad { background: rgba(230,65,60,0.25); color: #ff6b66; }
 .nf-tag.warn { background: rgba(245,158,11,0.25); color: #f5b041; }
 .nf-tag.info { background: rgba(122,162,247,0.2); color: #9bb8ff; }
+/* 籌碼分布（2026-11-22） */
+.vp-wrap { margin: 4px 12px; padding: 6px 8px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(120,150,210,0.16); }
+.vp-row { display: flex; align-items: center; gap: 6px; font-size: 11px; height: 15px; font-variant-numeric: tabular-nums; border-radius: 4px; }
+.vp-px { width: 56px; text-align: right; color: var(--text-dim); }
+.vp-bar { flex: 1; height: 9px; }
+.vp-bar i { display: block; height: 100%; border-radius: 3px; }
+.vp-pct { width: 38px; text-align: right; color: var(--text-dim); }
+.vp-row.cur { outline: 1px solid rgba(255,255,255,0.7); }
+.vp-row.cur .vp-px { color: #fff; font-weight: 700; }
+.vp-row.peak { outline: 1px solid #ffd166; box-shadow: 0 0 8px rgba(255,209,102,0.35); }
 /* 極端行情選股（2026-11-22） */
 .pn-head { padding: 10px 16px; font-size: 15px; }
 .pn-head b { font-size: 22px; }

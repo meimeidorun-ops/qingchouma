@@ -49,6 +49,21 @@ function computeMACD(closes, fast = 12, slow = 26, signal = 9) {
   return { macd, signal: signalLine, hist };
 }
 
+// RSI（Wilder 平滑，預設 14）：回傳跟 closes 同長度的陣列，前 period 筆是 null
+function computeRSI(closes, period = 14) {
+  const out = closes.map(() => null);
+  let up = 0, dn = 0;
+  for (let i = 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    const u = Math.max(d, 0), w = Math.max(-d, 0);
+    if (i <= period) { up += u; dn += w; if (i === period) { up /= period; dn /= period; out[i] = dn === 0 ? 100 : 100 - 100 / (1 + up / dn); } continue; }
+    up = (up * (period - 1) + u) / period;
+    dn = (dn * (period - 1) + w) / period;
+    out[i] = dn === 0 ? 100 : 100 - 100 / (1 + up / dn);
+  }
+  return out;
+}
+
 function computeBollingerBands(closes, period = 20, mult = 2) {
   const upper = [], mid = [], lower = [];
   for (let i = 0; i < closes.length; i++) {

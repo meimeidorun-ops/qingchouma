@@ -91,7 +91,7 @@ async function cnyesQuotes(stocks) {
       out[id] = {
         price: d['6'], prevClose: d['21'], change: d['11'], changePercent: d['56'],
         open: d['19'], high: d['12'], low: d['13'], vol: d['200013'],
-        date: t.ymd, time: t.hms, name: d['200009'], src: 'cnyes',
+        date: t.ymd, time: t.hms, name: d['200009'], src: 'cnyes', limitUp: d['75'], limitDown: d['76'], turnover: d['200067'],
       };
     }
   }));
