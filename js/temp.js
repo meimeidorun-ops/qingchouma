@@ -90,6 +90,42 @@ async function paintIndexTemp() {
   } catch (e) { box.innerHTML = ''; }
 }
 
+// ---------------------------------------------------------------- 大盤估值位置（2026-11-22，mk/valmkt.json ← Agent market_valuation.py）
+async function paintIndexVal() {
+  const box = $('#ix-val');
+  if (!box) return;
+  try {
+    const d = await Mk.load('valmkt');
+    const n = d.now, p = d.pct;
+    const lvl = v => v == null ? '—' : v >= 80 ? '很貴' : v >= 60 ? '偏貴' : v >= 40 ? '中間' : v >= 20 ? '偏便宜' : '很便宜';
+    const col = v => tempColor(v);  // 越貴越紅、越便宜越藍（跟溫度同一組顏色）
+    const card = (lbl, val, pv, sub) => `<div class="cs-pill"><span class="dim">${lbl}</span><b style="color:${col(pv)}">${val}</b><span class="dim">第 ${pv ?? '—'} 百分位・${lvl(pv)}${sub ? '｜' + sub : ''}</span></div>`;
+    const tbl = (rows, title) => `<div class="dim" style="padding:6px 4px 2px">${title}</div><div class="t-wrap"><table class="data-table compact t-tbl"><thead><tr><th>位置</th><th>1年後<br>平均</th><th>1年後<br>上漲</th><th>最差<br>10%</th><th>段數</th></tr></thead><tbody>
+      ${rows.map(b => `<tr><td>${b.label}</td><td class="${tCls(b.avg)}">${tSg(b.avg)}</td><td>${b.up ?? '—'}%</td><td class="down">${tSg(b.p10)}</td><td>${b.episodes}</td></tr>`).join('')}</tbody></table></div>`;
+    box.innerHTML = `<div class="section-label">📐 大盤估值位置（上市，${d.date.slice(5)}）</div>
+      <div class="cs-pills" style="grid-template-columns:repeat(2,1fr)">
+        ${card('近似席勒本益比', n.cape ?? '—', p.cape, `${d.capeYears} 年平均獲利`)}
+        ${card('大盤本益比', n.pe, p.pe, '')}
+        ${card('殖利率', n.yld + '%', p.yld == null ? null : 100 - p.yld, '殖利率越低越貴')}
+        ${card('股價淨值比', n.pb, p.pb, '')}
+      </div>
+      <div class="chart-container" id="ix-val-chart" style="height:200px"></div>
+      <div class="legend-row"><span><span class="dot" style="background:#f59e0b"></span>近似席勒本益比</span><span><span class="dot" style="background:#e0a3ff"></span>本益比（左軸）</span><span><span class="dot" style="background:#8b949e"></span>加權指數（右軸）</span></div>
+      <div class="t-stats">${tbl(d.stats.cape, '歷史上席勒本益比在各位置之後 1 年，加權指數的實際漲跌')}${tbl(d.stats.pe, '本益比在各位置之後 1 年')}</div>
+      <p class="hint" style="padding:4px 16px 14px"><b>怎麼看</b>：百分位＝現在的數字在 ${d.from.slice(0, 4)} 年以來所有交易日裡排在哪裡（100＝最貴）。席勒本益比用「過去多年平均獲利」，比一般本益比不受單年景氣影響，適合看長期貴不貴，<b>不適合抓短線買賣點</b>，偏貴可以維持好幾年。<br>
+        <b>限制</b>：台股沒有官方席勒本益比，這裡是用證交所每天公布的個股本益比、以市值加權自己估的（虧損公司不算、股數用最新集保資料、沒有通膨調整），平均期間只有 ${d.capeYears} 年（標準是 10 年）。資料只從 ${d.from.slice(0, 4)} 年開始、這段期間台股大多在多頭，所以表格裡「貴了之後反而漲更多」的結果樣本很少（看「段數」），<b>不能當成規律</b>。</p>`;
+    const el = $('#ix-val-chart');
+    const chart = makeChart(el, { leftPriceScale: { visible: true, borderColor: 'rgba(255,255,255,0.1)' } });
+    const capeS = chart.addSeries(LightweightCharts.LineSeries, { color: '#f59e0b', lineWidth: 2, priceScaleId: 'left', priceLineVisible: false }, 0);
+    capeS.setData(d.hist.filter(h => h[2] != null).map(h => ({ time: h[0], value: h[2] })));
+    const peS = chart.addSeries(LightweightCharts.LineSeries, { color: '#e0a3ff', lineWidth: 1, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: false }, 0);
+    peS.setData(d.hist.map(h => ({ time: h[0], value: h[1] })));
+    const tx = chart.addSeries(LightweightCharts.LineSeries, { color: '#8b949e', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
+    tx.setData(d.hist.map(h => ({ time: h[0], value: h[3] })));
+    showAllBars(chart, d.hist.length);
+  } catch (e) { box.innerHTML = ''; }
+}
+
 // ---------------------------------------------------------------- 個股溫度
 async function paintDetailTemp(stock) {
   const box = $('#dt-temp');

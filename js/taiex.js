@@ -136,6 +136,7 @@ function openIndex(mkt) {
   ixDrawMain();
   ixDrawChips();
   if (typeof paintIndexTemp === 'function') paintIndexTemp();
+  if (typeof paintIndexVal === 'function') paintIndexVal();
   clearInterval(Ix.timer);
   // 盤中：指數報價與即時走勢 20 秒、日K 60 秒更新一次
   let n = 0;
