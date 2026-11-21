@@ -492,3 +492,127 @@ body.bnav-on #app { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
 .ix-head { padding: 4px 16px 6px; line-height: 1.5; }
 .ix-head .ix-name { font-size: 13px; color: var(--text-dim, #8b949e); }
 .ix-head .ix-px { font-size: 24px; }
+
+/* ==================================================================================
+   ✨ 2026-11-22 美化主題「霓虹金」：深色漸層背景、玻璃質感卡片、金／青色重點、發光數字。
+   全部是最後覆蓋的樣式（不改結構），要退回舊樣子把這一段刪掉即可。
+   ================================================================================== */
+:root {
+  --bg: #070b14; --bg-elev: rgba(22, 30, 48, 0.72); --border: rgba(120, 150, 210, 0.16);
+  --text: #eef3ff; --text-dim: #8d9bb8; --accent: #ffd166; --accent2: #3ee6ff;
+  --up: #ff4d5e; --down: #19d38c;
+  --glass: rgba(255, 255, 255, 0.045); --glass2: rgba(255, 255, 255, 0.075);
+  --glow-gold: 0 0 18px rgba(255, 209, 102, 0.35); --glow-cyan: 0 0 18px rgba(62, 230, 255, 0.28);
+}
+html, body { background: #070b14; }
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(62, 230, 255, 0.10), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(255, 92, 168, 0.10), transparent 60%),
+    radial-gradient(800px 600px at 50% 120%, rgba(255, 209, 102, 0.08), transparent 60%),
+    linear-gradient(180deg, #070b14 0%, #0a1020 50%, #070b14 100%);
+  background-attachment: fixed;
+}
+#app { background: transparent; }
+.screen { background: transparent; }
+
+/* 頂部列：漸層品牌字＋毛玻璃 */
+.topbar, .detail-header { background: linear-gradient(180deg, rgba(10, 16, 32, 0.92), rgba(10, 16, 32, 0.70)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
+#screen-home .topbar .title { font-size: 21px; font-weight: 900; letter-spacing: 1px;
+  background: linear-gradient(90deg, #ffd166 0%, #ff8fab 45%, #3ee6ff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 10px rgba(255, 209, 102, 0.25)); }
+.topbar .title { font-weight: 800; }
+
+/* 搜尋框 */
+.search-box input { background: var(--glass); border: 1px solid var(--border); border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+.search-box input:focus { outline: none; border-color: var(--accent2); box-shadow: var(--glow-cyan); }
+
+/* 首頁大盤／溫度／國際小條：玻璃卡片 */
+.idx-bar, .temp-bar, .glb-bar { margin: 6px 12px 0; border-radius: 14px; background: var(--glass); border: 1px solid var(--border); padding: 8px 12px; }
+.idx-bar .idx-item b { font-size: 15px; text-shadow: 0 0 12px currentColor; }
+
+/* 清單分頁 */
+.group-tab { font-weight: 700; }
+.group-tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); text-shadow: var(--glow-gold); }
+.wl-sort { border-color: rgba(255, 209, 102, 0.35); background: rgba(255, 209, 102, 0.06); }
+
+/* 自選清單：每一列變卡片 */
+.watchlist { padding: 4px 10px 10px; }
+.wl-item { margin: 6px 0; border-radius: 14px; background: linear-gradient(135deg, var(--glass2), var(--glass)); border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); transition: transform .12s ease, border-color .12s ease; }
+.wl-item:active { transform: scale(0.985); border-color: rgba(62, 230, 255, 0.45); background: var(--glass2); }
+.wl-name { font-weight: 700; }
+.wl-price { font-size: 17px; font-weight: 800; letter-spacing: .3px; }
+.wl-change.up, .wl-right .up { color: var(--up); text-shadow: 0 0 10px rgba(255, 77, 94, 0.35); }
+.wl-change.down, .wl-right .down { color: var(--down); text-shadow: 0 0 10px rgba(25, 211, 140, 0.30); }
+
+/* 個股頁標題與價格 */
+.dt-name { font-weight: 800; }
+.dq-price { font-size: 24px; font-weight: 900; text-shadow: 0 0 16px rgba(255, 255, 255, 0.18); }
+.dq-change.up { color: var(--up); text-shadow: 0 0 10px rgba(255, 77, 94, 0.4); }
+.dq-change.down { color: var(--down); text-shadow: 0 0 10px rgba(25, 211, 140, 0.35); }
+
+/* 頁籤：發光底線 */
+.tabbar { background: rgba(10, 16, 32, 0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+.tab-btn { font-weight: 600; }
+.tab-btn.active { color: var(--accent); border-bottom: 2px solid var(--accent); text-shadow: var(--glow-gold); }
+
+/* 區間按鈕：膠囊＋漸層 */
+.range-btn { border-radius: 999px; background: var(--glass); border: 1px solid var(--border); }
+.range-btn.active { color: #1a1300; background: linear-gradient(90deg, #ffd166, #ffb347); border-color: transparent; box-shadow: var(--glow-gold); font-weight: 700; }
+
+/* 區塊標題：左側漸層亮條 */
+.section-label { position: relative; padding-left: 26px !important; font-weight: 800; letter-spacing: .5px; color: var(--text); }
+.section-label::before { content: ''; position: absolute; left: 14px; top: 50%; width: 4px; height: 16px; transform: translateY(-50%); border-radius: 4px; background: linear-gradient(180deg, #3ee6ff, #ffd166); box-shadow: var(--glow-cyan); }
+
+/* 圖表與表格放在卡片裡 */
+.chart-container { margin: 6px 10px; border-radius: 16px; background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)); border: 1px solid var(--border); }
+.table-wrap, .t-wrap { margin: 4px 10px; border-radius: 14px; background: var(--glass); border: 1px solid var(--border); overflow-x: auto; }
+.data-table th { color: var(--accent2); font-weight: 600; background: rgba(62, 230, 255, 0.05); }
+.data-table td { border-bottom-color: rgba(120, 150, 210, 0.08); }
+
+/* 小卡（籌碼總覽、ETF、分數歷史） */
+.cs-pill, .etf-grid > div, .sc-hist-grid > div { background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025)); border: 1px solid var(--border); border-radius: 12px; }
+.cs-pill b, .etf-grid b, .sc-hist-grid b { text-shadow: 0 0 10px rgba(255, 255, 255, 0.12); }
+
+/* 排行列 */
+.rk-row { margin: 5px 10px; border-radius: 12px; background: var(--glass); border: 1px solid var(--border); }
+.rk-row:active { background: var(--glass2); border-color: rgba(62, 230, 255, 0.45); }
+.rk-no { font-weight: 900; color: var(--accent); }
+
+/* 分數徽章、標籤 */
+.sc-badge.has { box-shadow: 0 0 10px currentColor; }
+
+/* 彈窗：玻璃底＋圓角 */
+.modal { background: rgba(2, 5, 12, 0.66); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.modal-card { background: linear-gradient(180deg, rgba(22, 30, 52, 0.96), rgba(12, 18, 34, 0.98)); border: 1px solid var(--border); border-bottom: none; border-radius: 22px 22px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6); }
+.modal-title { font-size: 17px; font-weight: 800; }
+.modal-btn { border-radius: 12px; }
+
+/* 底部導覽列：毛玻璃＋亮燈 */
+#bottom-nav { background: rgba(10, 16, 32, 0.82); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-top: 1px solid rgba(255, 209, 102, 0.18); box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5); }
+#bottom-nav button.on { color: var(--accent); text-shadow: var(--glow-gold); }
+#bottom-nav button.on .bn-ic { transform: translateY(-1px) scale(1.12); filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.7)); }
+#bottom-nav .bn-ic { transition: transform .15s ease; }
+
+/* 智能摘要列 */
+.dt-insight { display: flex; align-items: center; gap: 6px; margin: 4px 12px 6px; padding: 7px 10px; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(90deg, rgba(62, 230, 255, 0.10), rgba(255, 209, 102, 0.08)); border: 1px solid rgba(62, 230, 255, 0.25); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.dt-insight[hidden] { display: none; }
+.dt-insight::-webkit-scrollbar { display: none; }
+.ins-ic { font-size: 16px; }
+.ins-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); }
+.ins-chip i { font-style: normal; color: var(--text-dim); margin-right: 4px; }
+.ins-chip.up { color: var(--up); border-color: rgba(255, 77, 94, 0.4); box-shadow: 0 0 8px rgba(255, 77, 94, 0.18); }
+.ins-chip.down { color: var(--down); border-color: rgba(25, 211, 140, 0.4); box-shadow: 0 0 8px rgba(25, 211, 140, 0.15); }
+.ins-chip.flat { color: var(--text); }
+.ins-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px; }
+.ins-grid .ins-chip { text-align: center; padding: 8px; font-size: 14px; border-radius: 12px; }
+.ins-sec { font-weight: 800; margin-top: 10px; font-size: 14px; }
+.ins-sec.up { color: var(--up); } .ins-sec.down { color: var(--down); }
+.ins-ul { margin: 4px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.7; }
+.ins-ul li.up::marker { color: var(--up); } .ins-ul li.down::marker { color: var(--down); }
+.ins-mkt { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--glass); font-size: 13px; }
+
+/* 進場動畫 */
+@keyframes qcFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.screen.active .wl-item, .screen.active .rk-row, .screen.active .cs-pill { animation: qcFadeUp .28s ease both; }

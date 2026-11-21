@@ -311,7 +311,9 @@ function stepStock(delta) {
   const idx = navStocks.findIndex(s => s.stock_id === currentStock.stock_id);
   if (idx < 0 || navStocks.length < 2) return;
   const next = navStocks[(idx + delta + navStocks.length) % navStocks.length];
-  openStock({ stock_id: next.stock_id, stock_name: next.stock_name });
+  // 2026-11-22：上一檔／下一檔停在原本的頁籤（例如在「獲利」看完換下一檔還是「獲利」）
+  const cur = ($('.tab-btn.active') || {}).dataset;
+  openStock({ stock_id: next.stock_id, stock_name: next.stock_name }, { keepTab: cur && cur.tab });
 }
 
 function stopRtTimer() {
@@ -325,7 +327,7 @@ function goHome() {
   renderWatchlist();
 }
 
-async function openStock(stock) {
+async function openStock(stock, opts = {}) {
   currentStock = stock;
   if (!navStocks.some(s => s.stock_id === stock.stock_id)) navStocks = [];
   updateNavButtons();
@@ -364,6 +366,27 @@ async function openStock(stock) {
   }, 15000);
 
   paintDetailScore(stock);
+  // 換股票時要停在原本的頁籤（這一檔有這個頁籤才行，例如 ETF 沒有「獲利」）
+  const keep = opts.keepTab && opts.keepTab !== 'rt' ? document.querySelector(`.tab-btn[data-tab="${opts.keepTab}"]`) : null;
+  if (keep && !keep.hidden) {
+    $$('.tab-btn').forEach(b => b.classList.toggle('active', b === keep));
+    $$('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${opts.keepTab}`));
+    loadedTabs[opts.keepTab] = true;
+    // 右上角股價（即時頁沒開，所以單獨抓）；抓不到就用全市場收盤檔
+    refreshHeaderQuote().then(async () => {
+      if ($('#dq-price').textContent !== '—' || typeof Mk === 'undefined') return;
+      try {
+        const d = (await Mk.dayMap()).get(stock.stock_id);
+        if (d && d.close != null && currentStock === stock && $('#dq-price').textContent === '—') {
+          const prev = d.pct != null ? d.close / (1 + d.pct / 100) : d.close;
+          applyHeaderQuote(d.close, d.close - prev, d.pct || 0);
+        }
+      } catch (e) {}
+    });
+    TAB_LOADERS[opts.keepTab]();
+    prefetchStock(stock);
+    return;
+  }
   await loadRealtime();
   loadedTabs.rt = true;
   prefetchStock(stock);
@@ -400,6 +423,7 @@ async function paintDetailScore(stock) {
   if (typeof paintDetailTemp === 'function') paintDetailTemp(stock);
   if (typeof paintDetailFlags === 'function') paintDetailFlags(stock);
   if (typeof paintChipSummary === 'function') paintChipSummary(stock);
+  if (typeof paintInsight === 'function') paintInsight(stock);
   let it = scoreMap.get(stock.stock_id);
   if (!it) {
     try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) {}
