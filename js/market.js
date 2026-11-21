@@ -87,6 +87,43 @@ const mkEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&
   };
 })();
 
+// ---------------------------------------------------------------- 個股：月營收、季財報改用電腦先做好的靜態檔（2026-11-21）
+// 起因：手機直接打 FinMind 常「載入失敗」（免費額度、要授權碼）。mk/f/<代號前兩碼>.json ← Agent fin_export.py
+// （月營收＝官方＋FinMind 歷史、季財報＝公開資訊觀測站綜合損益表彙總，單季、元）。檔裡沒有的（ETF、新上市）才退回 FinMind。
+const MkF = {};
+async function mkShard(id) {
+  const k = String(id).slice(0, 2);
+  if (!MkF[k] || Date.now() - MkF[k].at > 6 * 3600e3) {
+    MkF[k] = { at: Date.now(), p: fetch(`mk/f/${k}.json?t=${Math.floor(Date.now() / 36e5)}`).then(r => r.ok ? r.json() : {}).catch(() => ({})) };
+  }
+  return (await MkF[k].p)[id] || null;
+}
+(() => {
+  const revFm = Api.monthRevenue.bind(Api);
+  Api.monthRevenue = async (id, months = 36) => {
+    const x = await mkShard(id);
+    if (x && x.r && x.r.length >= 13) {
+      return x.r.map(([y, m, v]) => ({ date: `${y}-${String(m).padStart(2, '0')}-01`, stock_id: id, revenue_year: y, revenue_month: m, revenue: v }));
+    }
+    return revFm(id, months);
+  };
+  const finFm = Api.financials.bind(Api);
+  Api.financials = async (id, years = 3) => {
+    const x = await mkShard(id);
+    if (x && x.q && x.q.length) {
+      const rows = [];
+      for (const [date, rev, gp, ni, eps] of x.q) {
+        if (rev != null) rows.push({ date, stock_id: id, type: 'Revenue', value: rev });
+        if (gp != null) rows.push({ date, stock_id: id, type: 'GrossProfit', value: gp });
+        if (ni != null) rows.push({ date, stock_id: id, type: 'IncomeAfterTaxes', value: ni });
+        if (eps != null) rows.push({ date, stock_id: id, type: 'EPS', value: eps });
+      }
+      return rows;
+    }
+    return finFm(id, years);
+  };
+})();
+
 // 搜尋：FinMind 股票清單抓不到（沒授權碼／額度用完）時，才改用全市場行情檔的代號＋名稱＋上市/上櫃。
 // 2026-10-14 修：v52 曾在一開啟就直接用行情檔蓋掉 stockIndex（沒有上市/上櫃欄位）→ marketFor() 把上櫃股都當上市，
 // 備援報價查錯市場、新加入的上櫃股也被記成上市。現在只在 FinMind 失敗時備援，而且帶 type。

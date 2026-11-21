@@ -41,7 +41,15 @@ async function loadDividends(stock, boxSel, tabKey, tk) {
   box.innerHTML = '<div class="section-label">歷年股利</div><div class="loading" style="padding:10px">載入中…</div>';
   try {
     const start = `${new Date().getFullYear() - 8}-01-01`;
-    const rows = await finmindGet('TaiwanStockDividend', { data_id: stock.stock_id, start_date: start }, { ttlMs: 7 * 86400e3 });
+    let rows;
+    try {
+      rows = await finmindGet('TaiwanStockDividend', { data_id: stock.stock_id, start_date: start }, { ttlMs: 7 * 86400e3 });
+    } catch (fmErr) {
+      // FinMind 失敗（額度、授權碼）→ 改用電腦做好的除權息紀錄（mk/f，只有權息合計，當作現金股利顯示）
+      const x = typeof mkShard === 'function' ? await mkShard(stock.stock_id) : null;
+      if (!x || !x.d || !x.d.length) throw fmErr;
+      rows = x.d.map(([date, v]) => ({ year: date.slice(0, 4), CashEarningsDistribution: v, CashExDividendTradingDate: date }));
+    }
     if (!tabLive(tabKey, tk, stock)) return;
     const num = v => Number(v) || 0;
     const list = (rows || []).map(r => ({
