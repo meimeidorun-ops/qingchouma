@@ -171,6 +171,28 @@ html, body {
 .nf-tag.bad { background: rgba(230,65,60,0.25); color: #ff6b66; }
 .nf-tag.warn { background: rgba(245,158,11,0.25); color: #f5b041; }
 .nf-tag.info { background: rgba(122,162,247,0.2); color: #9bb8ff; }
+/* 極端行情選股（2026-11-22） */
+.pn-head { padding: 10px 16px; font-size: 15px; }
+.pn-head b { font-size: 22px; }
+.pn-find { padding: 0 16px; font-size: 13px; line-height: 1.65; }
+.pn-find p { margin: 6px 0; }
+.pn-find b.up { color: #e6413c; } .pn-find b.down { color: #1fa363; }
+.t-tbl td.up { color: #e6413c; } .t-tbl td.down { color: #1fa363; }
+/* 底部導覽列（2026-11-22） */
+#bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex; background: var(--bg-elev); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom); max-width: 640px; margin: 0 auto; }
+#bottom-nav[hidden] { display: none; }
+#bottom-nav button { flex: 1; background: none; border: none; color: var(--text-dim); padding: 6px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 1px; cursor: pointer; }
+#bottom-nav button.on { color: #f2c744; }
+#bottom-nav .bn-ic { font-size: 18px; line-height: 1.1; }
+#bottom-nav .bn-lb { font-size: 11px; }
+body.bnav-on #app { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+/* 上方的 📊🎯💼 已收到底部導覽列；⚙ 也在「更多」裡 */
+#screen-home .topbar #btn-rank, #screen-home .topbar #btn-radar, #screen-home .topbar #btn-portfolio, #screen-home .topbar #btn-settings { display: none; }
+.bn-more { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bn-more button { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 14px; cursor: pointer; }
+.bn-more button span { font-size: 22px; }
+.bn-more button small { color: var(--text-dim); font-size: 11px; text-align: center; }
 /* 選股（2026-11-21） */
 .scr-panel { padding: 4px 12px 8px; border-bottom: 1px solid var(--border); }
 .scr-grp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }

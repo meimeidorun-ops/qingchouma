@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '81';
+window.APP_V = '82';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -343,6 +343,16 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
     </div>
   </section>
 
+  <!-- ================= 極端行情選股（2026-11-22） ================= -->
+  <section id="screen-panic" class="screen">
+    <div class="topbar">
+      <button class="back-btn" id="btn-panic-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">🔥 極端行情選股</div>
+      <div class="spacer"></div>
+    </div>
+    <div class="pf-scroll"><div id="panic-body"></div></div>
+  </section>
+
   <!-- ================= 國際盤（2026-11-21）：台指期（含夜盤）、美股指數與期貨、台股 ADR ================= -->
   <section id="screen-global" class="screen">
     <div class="topbar">
@@ -484,7 +494,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum', 'wlextra']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum', 'wlextra', 'panic', 'navbar']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>
