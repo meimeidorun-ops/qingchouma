@@ -443,7 +443,7 @@ async function openRank() {
           const p = px.get(id) || day.get(id) || {};
           const yld = cash && p.close ? cash / p.close * 100 : null;
           rows.push({ id, name: nm, px: p, v: date, cls: 'flat', main: `${date.slice(5).replace('-', '/')} 除${typ}`,
-            sub: `${cash ? `現金 ${cash} 元` : '金額待公告'}${yld != null ? `｜殖利率約 ${yld.toFixed(2)}%（這一次）` : ''}` });
+            sub: `${cash ? `現金 ${+Number(cash).toFixed(3)} 元` : '金額待公告'}${yld != null ? `｜殖利率約 ${yld.toFixed(2)}%（這一次）` : ''}` });
         }
         rows.sort((a, b) => a.v < b.v ? -1 : 1);
         note = '除權息預告（上市）｜依日期排序｜除權息當天開盤參考價會扣掉股利';

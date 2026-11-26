@@ -978,7 +978,8 @@ function klineContainerHeight() {
   const intraday = klineInterval !== '1d';
   const extraPanes = (klineOpts.showInst && !intraday ? 1 : 0) + (klineOpts.indicator ? 1 : 0)
     + (klineOpts.showMargin && !intraday && klineData.margin.length ? 1 : 0) + (klineOpts.showHolding && !intraday && klineData.holding.length ? 1 : 0);
-  return 260 + extraPanes * 90;
+  // 2026-11-26：K 棒主區拉高（原本 260，開兩個副圖後主區只剩一半）
+  return 320 + extraPanes * 85;
 }
 
 // 籌碼分布（2026-11-22，仿籌碼K線）：區間內每根日 K 的成交量平均分到「最低～最高」之間的價位，
@@ -986,7 +987,7 @@ function klineContainerHeight() {
 function paintVolumeProfile() {
   const box = $('#kl-vp');
   if (!box) return;
-  const rows = klineInterval === '1d' ? klineData.price : [];
+  const rows = klineInterval === '1d' ? (klineData.win ? klineData.price.slice(-klineData.win) : klineData.price) : [];  // 只算畫面上選的區間
   if (rows.length < 10) { box.innerHTML = ''; return; }
   const lo = Math.min(...rows.map(r => r.min)), hi = Math.max(...rows.map(r => r.max));
   if (!(hi > lo)) { box.innerHTML = ''; return; }
@@ -1031,11 +1032,19 @@ function redrawKline(keepRange = false) {
     showBBand: klineOpts.showBBand,
     indicator: klineOpts.indicator,
     intraday: klineInterval !== '1d',
-    visibleBars: { '60m': 100, '5m': 160 }[klineInterval],
+    visibleBars: klineInterval === '1d' ? klineData.win : { '60m': 100, '5m': 160 }[klineInterval],
     infoEl: $('#kl-info'),
     liveLast: klineInterval === '1d' && twMarketOpen(),
   });
   paintVolumeProfile();
+  // 圖例：只列畫面上真的有的線
+  const lg = $('#kl-legend');
+  if (lg) {
+    const it = [['#f2c744', 'MA5'], ['#7aa2f7', 'MA20']];
+    if (klineOpts.showMaExtra) it.push(['#ff8fab', 'MA10'], ['#3ee6ff', 'MA60']);
+    if (klineOpts.showBBand) it.push(['rgba(242,199,68,0.6)', '布林']);
+    lg.innerHTML = it.map(([c, t]) => `<span><span class="dot" style="background:${c}"></span>${t}</span>`).join('') + '<span class="dim">長按 K 線滑動看當天</span>';
+  }
   if (range && charts.kline) {
     try {
       const ch = charts.kline;
@@ -1084,7 +1093,8 @@ async function loadKline(silent = false) {
     const intraday = klineInterval !== '1d';
     // Daily rows always drive the header (prev-close fallback); intraday bars only draw the chart.
     const [priceRows, instRows, chartRows] = await Promise.all([
-      Api.daily(currentStock, intraday ? 10 : klineRange),
+      // 2026-11-26：日 K 多抓 130 天，讓 MA60、KD、MACD、RSI、布林在畫面最左邊就已經算好（畫面只顯示選的區間）
+      Api.daily(currentStock, intraday ? 10 : klineRange + 130),
       intraday ? Promise.resolve([]) : Api.institutional(currentStock.stock_id, klineRange).catch(() => []),
       intraday ? Backend.kbar(currentStock, klineInterval) : Promise.resolve(null),
     ]);
@@ -1093,7 +1103,9 @@ async function loadKline(silent = false) {
     const drawRows = chartRows || priceRows;
     if (!drawRows.length) { container.innerHTML = '<div class="error-msg">查無分K資料</div>'; return; }
     const keep = klineData.stock === stock.stock_id ? klineData : {};
-    klineData = { price: drawRows, inst: instRows, holding: keep.holding || [], margin: keep.range === klineRange ? (keep.margin || []) : [], stock: stock.stock_id, range: klineRange };
+    const cutoff = daysAgo(klineRange);
+    const win = intraday ? null : drawRows.filter(r => r.date >= cutoff).length;  // 畫面上要顯示幾根（其餘是暖身用）
+    klineData = { price: drawRows, inst: instRows, holding: keep.holding || [], margin: keep.range === klineRange ? (keep.margin || []) : [], stock: stock.stock_id, range: klineRange, win };
     redrawKline(silent);
     if (!intraday) klineLoadLayers(stock, tk);
 

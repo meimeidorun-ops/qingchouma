@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '84';
+window.APP_V = '85';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -110,33 +110,34 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
       </div>
 
       <div class="tab-pane" id="pane-kline">
-        <div class="range-bar" id="kline-interval">
-          <button class="range-btn active" data-interval="1d">日K</button>
-          <button class="range-btn" data-interval="60m">60分</button>
-          <button class="range-btn" data-interval="5m">5分</button>
+        <!-- 2026-11-26：週期＋區間同一排、圖層＋指標同一排（左右滑），圖表往上移 -->
+        <div class="range-bar kl-row">
+          <div class="kl-seg" id="kline-interval">
+            <button class="range-btn active" data-interval="1d">日K</button>
+            <button class="range-btn" data-interval="60m">60分</button>
+            <button class="range-btn" data-interval="5m">5分</button>
+          </div>
+          <div class="kl-seg" id="kline-range">
+            <button class="range-btn" data-range="92">3月</button>
+            <button class="range-btn active" data-range="180">半年</button>
+            <button class="range-btn" data-range="365">1年</button>
+            <button class="range-btn" data-range="730">2年</button>
+          </div>
         </div>
-        <div class="range-bar" id="kline-range">
-          <button class="range-btn" data-range="60">3個月</button>
-          <button class="range-btn active" data-range="180">6個月</button>
-          <button class="range-btn" data-range="365">1年</button>
-          <button class="range-btn" data-range="730">2年</button>
-        </div>
-        <div class="range-bar" id="kline-layers">
+        <div class="range-bar kl-row" id="kline-layers">
+          <span class="kl-lbl">疊圖</span>
           <button class="range-btn active" data-layer="inst">法人</button>
-          <button class="range-btn" data-layer="bband">BB</button>
           <button class="range-btn" data-layer="margin">融資</button>
           <button class="range-btn" data-layer="hold">大戶</button>
           <button class="range-btn" data-layer="ma">均線+</button>
+          <button class="range-btn" data-layer="bband">布林</button>
+          <span class="kl-lbl">指標</span>
           <button class="range-btn active" data-indicator="">無</button>
           <button class="range-btn" data-indicator="kd">KD</button>
           <button class="range-btn" data-indicator="macd">MACD</button>
           <button class="range-btn" data-indicator="rsi">RSI</button>
         </div>
-        <div class="legend-row">
-          <span><span class="dot" style="background:#f2c744"></span>MA5</span>
-          <span><span class="dot" style="background:#7aa2f7"></span>MA20</span>
-          <span class="dim">長按 K 線可左右滑動看當天價格</span>
-        </div>
+        <div class="legend-row kl-legend" id="kl-legend"></div>
         <div class="kl-info" id="kl-info"></div>
         <div class="chart-container tall" id="chart-kline"></div>
         <div id="kl-vp"></div>

@@ -10,7 +10,7 @@ function noticeFlags(n, id) {
   if (t && !p) out.push({ cls: 'warn', short: '注意', text: `注意股 ${t[2].slice(5)}${t[1] > 1 ? `（累計 ${t[1]} 次）` : ''}`, tip: t[3] });
   const today = twDateStr();
   const ex = n.exdiv.find(x => x[1] === id && x[0] >= today);
-  if (ex) out.push({ cls: 'info', short: `除${ex[3]}`, text: `${ex[0].slice(5).replace('-', '/')} 除${ex[3]}${ex[4] ? `｜現金 ${ex[4]} 元` : ''}`, tip: '除權息當天開盤參考價會扣掉股利。' });
+  if (ex) out.push({ cls: 'info', short: `除${ex[3]}`, text: `${ex[0].slice(5).replace('-', '/')} 除${ex[3]}${ex[4] ? `｜現金 ${+Number(ex[4]).toFixed(3)} 元` : ''}`, tip: '除權息當天開盤參考價會扣掉股利。' });
   return out;
 }
 

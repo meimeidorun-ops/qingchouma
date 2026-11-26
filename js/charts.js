@@ -224,7 +224,8 @@ function klineInfo(chart, el, rows, o) {
   const f = (v, d = 2) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
   const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
   const when = t => {
-    if (typeof t === 'number') { const s = new Date((t + 28800) * 1000).toISOString(); return `${s.slice(5, 10).replace('-', '/')} ${s.slice(11, 16)}`; }
+    // 分 K 的時間戳在畫圖前已經 +8 小時（圖表套件只顯示 UTC），這裡不要再加（2026-11-26 修：原本 13:30 顯示成 21:30）
+    if (typeof t === 'number') { const s = new Date(t * 1000).toISOString(); return `${s.slice(5, 10).replace('-', '/')} ${s.slice(11, 16)}`; }
     return String(t).slice(5).replace('-', '/');
   };
   const paint = i => {

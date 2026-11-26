@@ -171,6 +171,15 @@ html, body {
 .nf-tag.bad { background: rgba(230,65,60,0.25); color: #ff6b66; }
 .nf-tag.warn { background: rgba(245,158,11,0.25); color: #f5b041; }
 .nf-tag.info { background: rgba(122,162,247,0.2); color: #9bb8ff; }
+/* K 線控制列（2026-11-26） */
+.kl-row { display: flex; flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; gap: 6px; align-items: center; padding-top: 6px !important; padding-bottom: 4px !important; }
+.kl-row::-webkit-scrollbar { display: none; }
+.kl-row .range-btn { flex-shrink: 0; white-space: nowrap; padding: 4px 11px; font-size: 13px; }
+.kl-seg { display: flex; gap: 4px; flex-shrink: 0; padding: 2px; border-radius: 999px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); }
+.kl-seg .range-btn { border: none; background: transparent; }
+.kl-lbl { flex-shrink: 0; font-size: 11px; color: var(--text-dim); padding-left: 4px; }
+.kl-lbl + .range-btn { margin-left: -2px; }
+.kl-legend { padding: 0 16px 2px; gap: 10px; font-size: 11px; }
 /* 籌碼分布（2026-11-22） */
 .vp-wrap { margin: 4px 12px; padding: 6px 8px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(120,150,210,0.16); }
 .vp-row { display: flex; align-items: center; gap: 6px; font-size: 11px; height: 15px; font-variant-numeric: tabular-nums; border-radius: 4px; }
