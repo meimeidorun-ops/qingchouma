@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '86';
+window.APP_V = '87';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -95,6 +95,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
     <div class="tab-content">
       <div class="tab-pane active" id="pane-rt">
         <div class="rt-stats" id="rt-stats"></div>
+        <div id="rt-book"></div>
         <div class="chart-container" id="chart-rt" style="height:340px"></div>
         <p class="hint" id="rt-note" style="padding:8px 16px 8px"></p>
         <div id="rt-chips"></div>
@@ -127,6 +128,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
         <div class="range-bar kl-row" id="kline-layers">
           <span class="kl-lbl">疊圖</span>
           <button class="range-btn active" data-layer="inst">法人</button>
+          <button class="range-btn" data-layer="main">主力</button>
           <button class="range-btn" data-layer="margin">融資</button>
           <button class="range-btn" data-layer="hold">大戶</button>
           <button class="range-btn kl-ma-btn" id="kl-ma-btn">均線 ⚙</button>
@@ -225,6 +227,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
             <tbody></tbody>
           </table>
         </div>
+        <div id="peer-box"></div>
       </div>
 
       <div class="tab-pane" id="pane-profit">
@@ -499,7 +502,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum', 'wlextra', 'panic', 'insight', 'navbar']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum', 'wlextra', 'panic', 'insight', 'peer', 'navbar']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>

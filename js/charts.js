@@ -156,6 +156,14 @@ function renderKLine(container, priceRows, opts = {}) {
     paneIdx++;
   }
 
+  // ---- (optional) 主力買賣超：前 15 大買超分點合計 − 前 15 大賣超（張，近 20 個交易日）（2026-11-26） ----
+  const mainRows = (opts.mainRows || []).filter(r => r.date >= dates[0]);
+  if (opts.showMain && mainRows.length) {
+    const ms = chart.addSeries(LightweightCharts.HistogramSeries, { priceFormat: { type: 'volume' } }, paneIdx);
+    ms.setData(mainRows.map(r => ({ time: r.date, value: r.net, color: r.net >= 0 ? 'rgba(255,143,171,0.85)' : 'rgba(62,230,255,0.75)' })));
+    paneIdx++;
+  }
+
   // ---- (optional) 融資：每日增減（柱）＋餘額（線，右軸另一個刻度）（2026-11-21） ----
   const marginRows = (opts.marginRows || []).filter(r => r.date >= dates[0]);
   if (opts.showMargin && marginRows.length) {
@@ -203,7 +211,7 @@ function renderKLine(container, priceRows, opts = {}) {
   if (opts.visibleBars) chart._window = opts.visibleBars;
   showAllBars(chart, priceRows.length);
   if (opts.infoEl) klineInfo(chart, opts.infoEl, priceRows, { maList, instRows, showInst, volUnit: opts.volUnit || '張', intraday, liveLast: opts.liveLast,
-    marginRows: opts.showMargin ? marginRows : [], holdingRows: showHolding ? holdingRows : [] });
+    marginRows: opts.showMargin ? marginRows : [], holdingRows: showHolding ? holdingRows : [], mainRows: opts.showMain ? mainRows : [] });
   return chart;
 }
 
@@ -213,6 +221,7 @@ function klineInfo(chart, el, rows, o) {
   const idx = new Map(rows.map((r, i) => [String(r.date), i]));
   const instBy = o.showInst && o.instRows.length ? aggregateInstitutionalByDate(o.instRows, 1000) : null;
   const mgBy = new Map((o.marginRows || []).map(r => [r.date, r]));
+  const mainBy = new Map((o.mainRows || []).map(r => [r.date, r.net]));
   const hold = (o.holdingRows || []).slice().sort((a, b) => a.date < b.date ? -1 : 1);
   const holdAt = d => { let v = null; for (const h of hold) { if (h.date <= d) v = h; else break; } return v; };
   const f = (v, d = 2) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -239,6 +248,7 @@ function klineInfo(chart, el, rows, o) {
       `<span>量 ${f(r.Trading_Volume / 1000, o.volUnit === '億' ? 0 : 0)} ${o.volUnit}</span>` +
       o.maList.map(m => m.v[i] != null ? `<span style="color:${m.color}">MA${m.n} ${f(m.v[i])}</span>` : '').join('') +
       (inst != null ? `<span>法人 <b class="${cls(inst)}">${inst > 0 ? '+' : ''}${f(inst, 0)}</b> ${o.volUnit === '億' ? '億' : '張'}</span>` : '') +
+      (mainBy.has(r.date) ? `<span>主力 <b class="${cls(mainBy.get(r.date))}">${mainBy.get(r.date) > 0 ? '+' : ''}${f(mainBy.get(r.date), 0)}</b> 張</span>` : '') +
       (() => { const m = mgBy.get(r.date); return m && m.bal != null ? `<span class="kli-mg">融資 ${f(m.bal, 0)} 張${m.chg != null ? `（<b class="${cls(m.chg)}">${m.chg > 0 ? '+' : ''}${f(m.chg, 0)}</b>）` : ''}</span>` : ''; })() +
       (() => { if (o.intraday || !hold.length) return ''; const h = holdAt(String(r.date)); return h ? `<span class="kli-hold">大戶 ${f(h.percent)}%<span class="dim">（${h.date.slice(5)} 週）</span></span>` : ''; })();
   };

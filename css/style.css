@@ -171,6 +171,27 @@ html, body {
 .nf-tag.bad { background: rgba(230,65,60,0.25); color: #ff6b66; }
 .nf-tag.warn { background: rgba(245,158,11,0.25); color: #f5b041; }
 .nf-tag.info { background: rgba(122,162,247,0.2); color: #9bb8ff; }
+/* 同業比較（2026-11-26） */
+.peer-sum { padding: 2px 16px 6px; font-size: 13px; line-height: 1.7; }
+.peer-tbl tr { cursor: pointer; }
+.peer-tbl tr.me td { background: rgba(255,209,102,0.12); }
+.peer-tbl td, .peer-tbl th { padding: 6px 5px; font-size: 12px; }
+/* 五檔（2026-11-26） */
+.bk-wrap { margin: 2px 12px 8px; padding: 8px 10px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.bk-head { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; font-size: 11px; color: var(--text-dim); text-align: center; margin-bottom: 4px; }
+.bk-row { display: grid; grid-template-columns: 48px 1fr 64px 64px 1fr 48px; align-items: center; gap: 4px; font-size: 13px; height: 22px; }
+.bk-v { text-align: center; color: var(--text-dim); font-size: 12px; }
+.bk-p { text-align: center; font-weight: 700; }
+.bk-p.up { color: var(--up); } .bk-p.down { color: var(--down); }
+.bk-bar { height: 10px; display: flex; }
+.bk-bar.b { justify-content: flex-end; }
+.bk-bar i { display: block; height: 100%; border-radius: 3px; }
+.bk-bar.b i { background: linear-gradient(90deg, transparent, rgba(255,77,94,0.6)); }
+.bk-bar.a i { background: linear-gradient(90deg, rgba(25,211,140,0.6), transparent); }
+.bk-ratio { height: 5px; border-radius: 3px; background: rgba(25,211,140,0.55); margin-top: 6px; overflow: hidden; }
+.bk-ratio i { display: block; height: 100%; background: rgba(255,77,94,0.75); }
+.bk-foot { display: flex; justify-content: space-between; font-size: 11px; margin-top: 3px; }
+.bk-foot .up { color: var(--up); } .bk-foot .down { color: var(--down); }
 /* 均線設定（2026-11-26） */
 .ma-list { display: grid; gap: 8px; }
 .ma-row { display: flex; align-items: center; gap: 8px; font-size: 15px; padding: 6px 8px; border-radius: 10px; background: rgba(255,255,255,0.04); }

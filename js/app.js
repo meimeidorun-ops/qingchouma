@@ -10,7 +10,7 @@ let marginRange = 180;
 let klineData = { price: [], inst: [], holding: [], margin: [] };
 let klineOpts = { showInst: true, showBBand: false, indicator: null,
   showMargin: localStorage.getItem('kl_margin') === '1', showHolding: localStorage.getItem('kl_hold') === '1',
-  showMaExtra: false };
+  showMaExtra: false, showMain: localStorage.getItem('kl_main') === '1' };
 
 // ---- 自訂均線（2026-11-26）：最多 6 條，每條可開關、自訂天數；存 localStorage.kl_ma_cfg ----
 const MA_COLORS = ['#f2c744', '#ff8fab', '#7aa2f7', '#3ee6ff', '#b98cff', '#ff9f43'];
@@ -466,6 +466,7 @@ async function paintDetailScore(stock) {
   if (typeof paintDetailFlags === 'function') paintDetailFlags(stock);
   if (typeof paintChipSummary === 'function') paintChipSummary(stock);
   if (typeof paintInsight === 'function') paintInsight(stock);
+  if (typeof paintPeers === 'function') paintPeers(stock);
   let it = scoreMap.get(stock.stock_id);
   if (!it) {
     try { const d = await Backend.scores(); scoreMap = new Map((d && d.items || []).map(x => [x.id, scoreModeItem(x)])); } catch (e) {}
@@ -642,16 +643,27 @@ async function paintScores(list) {
   if (typeof mkFillScores === 'function') mkFillScores(list);
 }
 
+// 2026-11-26：多種排序（分數／漲幅／跌幅／成交值／代號／自訂），按鈕循環切換；價格類排序在報價更新後自動重排
+const WL_SORTS = [['score', '分數 高→低'], ['up', '漲幅 高→低'], ['down', '跌幅 大→小'], ['money', '成交值 大→小'], ['code', '代號'], ['custom', '自訂']];
 function applyWatchlistSort(list) {
   const box = $('#watchlist');
   const btn = $('#wl-sort');
-  if (btn) btn.textContent = wlSortMode === 'score' ? '排序：分數 高→低' : '排序：自訂';
+  if (btn) btn.textContent = `排序：${(WL_SORTS.find(x => x[0] === wlSortMode) || WL_SORTS[0])[1]}`;
   const items = [...box.querySelectorAll('.wl-item')];
   if (!items.length) return;
   const order = new Map(list.map((s, i) => [s.stock_id, i]));
+  const q = ['up', 'down', 'money'].includes(wlSortMode) ? (Backend.quotePeek(list) || {}) : {};
+  const day = typeof Mk !== 'undefined' && Mk.cache.day && Mk.cache.day.data._map;  // 沒即時報價就用收盤檔
+  const pctOf = id => { const x = q[id]; if (x && x.changePercent != null) return x.changePercent; const d = day && day.get(id); return d && d.pct != null ? d.pct : null; };
+  const moneyOf = id => { const x = q[id]; if (x && x.turnover) return x.turnover; const d = day && day.get(id); return d && d.money ? d.money * 1e6 : null; };
   const key = el => {
-    if (wlSortMode !== 'score') return order.get(el.dataset.id);
-    const it = scoreMap.get(el.dataset.id);
+    const id = el.dataset.id;
+    if (wlSortMode === 'custom') return order.get(id);
+    if (wlSortMode === 'code') return Number(id.replace(/\D/g, '')) || 0;
+    if (wlSortMode === 'up') { const p = pctOf(id); return p == null ? 1e9 : -p; }
+    if (wlSortMode === 'down') { const p = pctOf(id); return p == null ? 1e9 : p; }
+    if (wlSortMode === 'money') { const m = moneyOf(id); return m == null ? 1e18 : -m; }
+    const it = scoreMap.get(id);
     return it && it.score != null ? -it.score : 1;  // 沒分數的排最後
   };
   items.sort((a, b) => key(a) - key(b) || order.get(a.dataset.id) - order.get(b.dataset.id)).forEach(el => box.appendChild(el));
@@ -758,6 +770,7 @@ async function refreshWatchlistQuotes(list = wlList) {
       return;
     }
     await paintWatchlistQuotes(list, quotes, false);  // 失敗時會改顯示收盤價，標籤上附失敗原因
+    if (['up', 'down', 'money'].includes(wlSortMode)) applyWatchlistSort(list);  // 價格類排序跟著報價重排
     if (failed && !/收盤價/.test($('#wl-updated').textContent)) paintQuoteTime({}, true);
   } finally {
     if (run === wlRun) {
@@ -934,11 +947,49 @@ function applyHeaderQuote(price, change, pct) {
 }
 
 let rtLastLoad = 0;
+// 五檔報價（2026-11-26）：快速後端 action=book（證交所 MIS，最佳 5 檔買賣價與張數）。跟著即時頁 15 秒更新；抓不到就收起來。
+async function paintBook(stock) {
+  const box = $('#rt-book');
+  if (!box) return;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 6000);
+    let j;
+    try { j = await (await fetch(`${FAST_URL}?action=book&id=${encodeURIComponent(stock.stock_id)}`, { signal: ctl.signal, cache: 'no-store' })).json(); }
+    finally { clearTimeout(t); }
+    if (currentStock !== stock) return;
+    if (j.status !== 200 || !j.data || (!j.data.a.length && !j.data.b.length)) { box.innerHTML = ''; return; }
+    const d = j.data, ref = d.y;
+    const px = p => p === 0 ? '市價' : numFmt(p, 2);
+    const cls = p => !p || !ref ? '' : p > ref ? 'up' : p < ref ? 'down' : '';
+    const maxV = Math.max(1, ...d.a.map(x => x[1]), ...d.b.map(x => x[1]));
+    const sumA = d.a.reduce((s, x) => s + x[1], 0), sumB = d.b.reduce((s, x) => s + x[1], 0);
+    const rows = [];
+    for (let i = 0; i < 5; i++) {
+      const b = d.b[i], a = d.a[i];
+      rows.push(`<div class="bk-row">
+        <span class="bk-v">${b ? numFmt(b[1]) : ''}</span>
+        <span class="bk-bar b"><i style="width:${b ? (b[1] / maxV * 100).toFixed(0) : 0}%"></i></span>
+        <span class="bk-p ${b ? cls(b[0]) : ''}">${b ? px(b[0]) : '—'}</span>
+        <span class="bk-p ${a ? cls(a[0]) : ''}">${a ? px(a[0]) : '—'}</span>
+        <span class="bk-bar a"><i style="width:${a ? (a[1] / maxV * 100).toFixed(0) : 0}%"></i></span>
+        <span class="bk-v">${a ? numFmt(a[1]) : ''}</span></div>`);
+    }
+    const ratio = sumA + sumB ? sumB / (sumA + sumB) * 100 : 50;
+    box.innerHTML = `<div class="bk-wrap">
+      <div class="bk-head"><span>買量</span><span>買價</span><span>賣價</span><span>賣量</span></div>${rows.join('')}
+      <div class="bk-ratio"><i style="width:${ratio.toFixed(0)}%"></i></div>
+      <div class="bk-foot"><span class="up">委買 ${numFmt(sumB)} 張</span><span class="dim">${d.t ? '五檔 ' + d.t.slice(0, 5) : ''}</span><span class="down">委賣 ${numFmt(sumA)} 張</span></div></div>`;
+  } catch (e) { box.innerHTML = ''; }
+}
+
 async function loadRealtime(silent = false) {
   const container = $('#chart-rt');
   const stock = currentStock;
   rtLastLoad = Date.now();
   if (!silent || !rtHandle) container.innerHTML = '<div class="loading">載入中…</div>';
+  if (!silent) $('#rt-book').innerHTML = '';
+  paintBook(stock);
   try {
     const [intra, quotes] = await Promise.all([
       Backend.intraday(stock),
@@ -1018,7 +1069,8 @@ async function loadRealtime(silent = false) {
 function klineContainerHeight() {
   const intraday = klineInterval !== '1d';
   const extraPanes = (klineOpts.showInst && !intraday ? 1 : 0) + (klineOpts.indicator ? 1 : 0)
-    + (klineOpts.showMargin && !intraday && klineData.margin.length ? 1 : 0) + (klineOpts.showHolding && !intraday && klineData.holding.length ? 1 : 0);
+    + (klineOpts.showMargin && !intraday && klineData.margin.length ? 1 : 0) + (klineOpts.showHolding && !intraday && klineData.holding.length ? 1 : 0)
+    + (klineOpts.showMain && !intraday && (klineData.main || []).length ? 1 : 0);
   // 2026-11-26：K 棒主區拉高（原本 260，開兩個副圖後主區只剩一半）
   return 320 + extraPanes * 85;
 }
@@ -1073,6 +1125,8 @@ function redrawKline(keepRange = false) {
     showHolding: klineOpts.showHolding && klineInterval === '1d',
     showMargin: klineOpts.showMargin && klineInterval === '1d',
     maList: maActive(),
+    mainRows: klineData.main || [],
+    showMain: klineOpts.showMain && klineInterval === '1d',
     showBBand: klineOpts.showBBand,
     indicator: klineOpts.indicator,
     intraday: klineInterval !== '1d',
@@ -1086,6 +1140,7 @@ function redrawKline(keepRange = false) {
   if (lg) {
     const it = maActive().map(m => [m.color, `MA${m.n}`]);
     if (klineOpts.showBBand) it.push(['rgba(242,199,68,0.6)', '布林']);
+    if (klineOpts.showMain && klineInterval === '1d') it.push(['rgba(255,143,171,0.85)', (klineData.main || []).length ? '主力買／青＝賣（近20日）' : '主力載入中…']);
     lg.innerHTML = it.map(([c, t]) => `<span><span class="dot" style="background:${c}"></span>${t}</span>`).join('') + '<span class="dim">長按 K 線滑動看當天</span>';
   }
   if (range && charts.kline) {
@@ -1122,6 +1177,11 @@ async function klineLoadLayers(stock, tk) {
       return d && !seen.has(d) && (seen.add(d), true) ? { date: d, percent: Math.round(pct * 100) / 100 } : null;
     }).filter(Boolean);
   }).catch(() => {}));
+  // 主力買賣超（近 20 個交易日，分點頁同一份資料；第一次約 6 秒）
+  if (klineOpts.showMain && !(klineData.main || []).length && typeof getMainHist === 'function') jobs.push(getMainHist(stock.stock_id).then(rows => {
+    const set = new Set(dates);
+    klineData.main = (rows || []).filter(r => set.has(r.date)).map(r => ({ date: r.date, net: r.net }));
+  }).catch(() => {}));
   if (!jobs.length) return;
   await Promise.all(jobs);
   if ((tk == null ? currentStock === stock : tabLive('kline', tk, stock)) && klineData.stock === stock.stock_id) redrawKline(true);
@@ -1148,7 +1208,7 @@ async function loadKline(silent = false) {
     const keep = klineData.stock === stock.stock_id ? klineData : {};
     const cutoff = daysAgo(klineRange);
     const win = intraday ? null : drawRows.filter(r => r.date >= cutoff).length;  // 畫面上要顯示幾根（其餘是暖身用）
-    klineData = { price: drawRows, inst: instRows, holding: keep.holding || [], margin: keep.range === klineRange ? (keep.margin || []) : [], stock: stock.stock_id, range: klineRange, win, warm: warmDays() };
+    klineData = { price: drawRows, inst: instRows, holding: keep.holding || [], margin: keep.range === klineRange ? (keep.margin || []) : [], main: keep.main || [], stock: stock.stock_id, range: klineRange, win, warm: warmDays() };
     redrawKline(silent);
     if (!intraday) klineLoadLayers(stock, tk);
 
@@ -1271,7 +1331,8 @@ document.addEventListener('DOMContentLoaded', () => {
     paintScores(wlRendered);
   });
   $('#wl-sort').addEventListener('click', () => {
-    wlSortMode = wlSortMode === 'score' ? 'custom' : 'score';
+    const i = WL_SORTS.findIndex(x => x[0] === wlSortMode);
+    wlSortMode = WL_SORTS[(i + 1) % WL_SORTS.length][0];
     try { localStorage.setItem('wl_sort2', wlSortMode); } catch (e) {}
     applyWatchlistSort(wlRendered);
   });
@@ -1325,17 +1386,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $$('#kline-layers [data-layer]').forEach(btn => {
-    const k0 = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding', ma: 'showMaExtra' }[btn.dataset.layer];
+    const k0 = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding', ma: 'showMaExtra', main: 'showMain' }[btn.dataset.layer];
     btn.classList.toggle('active', !!klineOpts[k0]);
     btn.addEventListener('click', () => {
-      const key = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding', ma: 'showMaExtra' }[btn.dataset.layer];
+      const key = { inst: 'showInst', bband: 'showBBand', margin: 'showMargin', hold: 'showHolding', ma: 'showMaExtra', main: 'showMain' }[btn.dataset.layer];
       klineOpts[key] = !klineOpts[key];
       btn.classList.toggle('active', klineOpts[key]);
-      if (key === 'showMaExtra') localStorage.setItem('kl_ma', klineOpts[key] ? '1' : '0');
+      if (key === 'showMain') localStorage.setItem('kl_main', klineOpts[key] ? '1' : '0');
       if (key === 'showMargin') localStorage.setItem('kl_margin', klineOpts[key] ? '1' : '0');
       if (key === 'showHolding') localStorage.setItem('kl_hold', klineOpts[key] ? '1' : '0');
       redrawKline();
-      if ((key === 'showMargin' || key === 'showHolding') && klineOpts[key] && currentStock && klineInterval === '1d') klineLoadLayers(currentStock, null);
+      if ((key === 'showMargin' || key === 'showHolding' || key === 'showMain') && klineOpts[key] && currentStock && klineInterval === '1d') klineLoadLayers(currentStock, null);
     });
   });
 

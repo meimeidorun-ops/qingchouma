@@ -383,27 +383,34 @@ async function loadBranch() {
 // 主力買賣超歷史（2026-11-21）：每天前 15 大買超分點合計 − 前 15 大賣超分點合計（張），近 20 個交易日。
 // 快速後端 action=mainHist（一次抓 20 天、CDN 快取 1 小時）；交易日用 mk/inst.json 的日期＋分點頁最新資料日。
 const mainHistCache = {};
+// 近 20 個交易日主力買賣超（分點頁與 K 線「主力」疊圖共用；同一檔同一天只抓一次）
+async function getMainHist(stockId, latest) {
+  let days = [];
+  try { days = (await Mk.load('inst')).days.slice(-20); } catch (e) {}
+  const lt = latest ? latest.replace(/\//g, '-') : '';
+  if (lt && !days.includes(lt) && (!days.length || lt > days[days.length - 1])) days = days.concat(lt).slice(-20);
+  if (!days.length) throw new Error('沒有交易日資料');
+  const key = `${stockId}_${days[days.length - 1]}`;
+  if (!mainHistCache[key]) {
+    mainHistCache[key] = (async () => {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 15000);
+      try {
+        const j = await (await fetch(`${FAST_URL}?action=mainHist&id=${stockId}&dates=${days.join(',')}`, { signal: ctl.signal })).json();
+        if (j.status !== 200) throw new Error(j.error || '抓不到');
+        return j.data;
+      } finally { clearTimeout(t); }
+    })();
+    mainHistCache[key].catch(() => { delete mainHistCache[key]; });  // 失敗的不要留著，下次重抓
+  }
+  return mainHistCache[key];
+}
 async function loadMainHist(stock, tk, latest) {
   const box = $('#main-hist');
   if (!box) return;
   box.innerHTML = '<div class="section-label">主力買賣超（近 20 日）</div><div class="loading" style="padding:12px">載入中…</div>';
   try {
-    let days = [];
-    try { days = (await Mk.load('inst')).days.slice(-20); } catch (e) {}
-    const lt = latest ? latest.replace(/\//g, '-') : '';
-    if (lt && !days.includes(lt) && (!days.length || lt > days[days.length - 1])) days = days.concat(lt).slice(-20);
-    if (!days.length) throw new Error('沒有交易日資料');
-    const key = `${stock.stock_id}_${days[days.length - 1]}`;
-    let rows = mainHistCache[key];
-    if (!rows) {
-      const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 15000);
-      try {
-        const j = await (await fetch(`${FAST_URL}?action=mainHist&id=${stock.stock_id}&dates=${days.join(',')}`, { signal: ctl.signal })).json();
-        if (j.status !== 200) throw new Error(j.error || '抓不到');
-        rows = mainHistCache[key] = j.data;
-      } finally { clearTimeout(t); }
-    }
+    const rows = await getMainHist(stock.stock_id, latest);
     if (!tabLive('branch', tk, stock) || !$('#main-hist')) return;
     let cum = 0;
     const cumRows = rows.map(r => ({ ...r, cum: (cum += r.net) }));
