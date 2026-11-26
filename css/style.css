@@ -171,6 +171,14 @@ html, body {
 .nf-tag.bad { background: rgba(230,65,60,0.25); color: #ff6b66; }
 .nf-tag.warn { background: rgba(245,158,11,0.25); color: #f5b041; }
 .nf-tag.info { background: rgba(122,162,247,0.2); color: #9bb8ff; }
+/* 均線設定（2026-11-26） */
+.ma-list { display: grid; gap: 8px; }
+.ma-row { display: flex; align-items: center; gap: 8px; font-size: 15px; padding: 6px 8px; border-radius: 10px; background: rgba(255,255,255,0.04); }
+.ma-on { display: flex; align-items: center; gap: 6px; }
+.ma-on input { width: 20px; height: 20px; accent-color: #ffd166; }
+.ma-on .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.ma-n { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.25); color: var(--text); font-size: 16px; text-align: center; }
+.kl-ma-btn { border-color: rgba(255,209,102,0.4) !important; }
 /* K 線控制列（2026-11-26） */
 .kl-row { display: flex; flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; gap: 6px; align-items: center; padding-top: 6px !important; padding-bottom: 4px !important; }
 .kl-row::-webkit-scrollbar { display: none; }

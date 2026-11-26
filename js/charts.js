@@ -114,18 +114,12 @@ function renderKLine(container, priceRows, opts = {}) {
   }, 0);
   candleSeries.setData(priceRows.map(r => ({ time: r.date, open: r.open, high: r.max, low: r.min, close: r.close })));
 
-  const ma5 = sma(closes, 5);
-  const ma20 = sma(closes, 20);
-  const maSeries5 = chart.addSeries(LightweightCharts.LineSeries, { color: '#f2c744', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
-  const maSeries20 = chart.addSeries(LightweightCharts.LineSeries, { color: '#7aa2f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
-  maSeries5.setData(seriesLine(dates, ma5));
-  maSeries20.setData(seriesLine(dates, ma20));
-  // 2026-11-22：「均線+」再加 MA10、MA60
-  if (opts.showMaExtra) {
-    const m10 = chart.addSeries(LightweightCharts.LineSeries, { color: '#ff8fab', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
-    const m60 = chart.addSeries(LightweightCharts.LineSeries, { color: '#3ee6ff', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
-    m10.setData(seriesLine(dates, sma(closes, 10)));
-    m60.setData(seriesLine(dates, sma(closes, 60)));
+  // 2026-11-26：均線可自訂（opts.maList = [{n:天數, color}]，使用者在 K 線「均線」設定）；沒給就 MA5、MA20
+  const maList = (opts.maList && opts.maList.length ? opts.maList : [{ n: 5, color: '#f2c744' }, { n: 20, color: '#7aa2f7' }])
+    .map(m => ({ n: m.n, color: m.color, v: sma(closes, m.n) }));
+  for (const m of maList) {
+    const s = chart.addSeries(LightweightCharts.LineSeries, { color: m.color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
+    s.setData(seriesLine(dates, m.v));
   }
 
   if (showBBand) {
@@ -208,7 +202,7 @@ function renderKLine(container, priceRows, opts = {}) {
   setPaneHeights(chart, paneIdx - 2);
   if (opts.visibleBars) chart._window = opts.visibleBars;
   showAllBars(chart, priceRows.length);
-  if (opts.infoEl) klineInfo(chart, opts.infoEl, priceRows, { ma5, ma20, instRows, showInst, volUnit: opts.volUnit || '張', intraday, liveLast: opts.liveLast,
+  if (opts.infoEl) klineInfo(chart, opts.infoEl, priceRows, { maList, instRows, showInst, volUnit: opts.volUnit || '張', intraday, liveLast: opts.liveLast,
     marginRows: opts.showMargin ? marginRows : [], holdingRows: showHolding ? holdingRows : [] });
   return chart;
 }
@@ -243,8 +237,7 @@ function klineInfo(chart, el, rows, o) {
       `<span>${isLive ? '現價' : '收'} <b class="${c}">${f(r.close)}</b></span>` +
       (chg != null ? `<span class="${c}">${chg > 0 ? '+' : ''}${f(chg)}（${pct > 0 ? '+' : ''}${f(pct)}%）</span>` : '') +
       `<span>量 ${f(r.Trading_Volume / 1000, o.volUnit === '億' ? 0 : 0)} ${o.volUnit}</span>` +
-      (o.ma5[i] != null ? `<span class="kli-ma5">MA5 ${f(o.ma5[i])}</span>` : '') +
-      (o.ma20[i] != null ? `<span class="kli-ma20">MA20 ${f(o.ma20[i])}</span>` : '') +
+      o.maList.map(m => m.v[i] != null ? `<span style="color:${m.color}">MA${m.n} ${f(m.v[i])}</span>` : '').join('') +
       (inst != null ? `<span>法人 <b class="${cls(inst)}">${inst > 0 ? '+' : ''}${f(inst, 0)}</b> ${o.volUnit === '億' ? '億' : '張'}</span>` : '') +
       (() => { const m = mgBy.get(r.date); return m && m.bal != null ? `<span class="kli-mg">融資 ${f(m.bal, 0)} 張${m.chg != null ? `（<b class="${cls(m.chg)}">${m.chg > 0 ? '+' : ''}${f(m.chg, 0)}</b>）` : ''}</span>` : ''; })() +
       (() => { if (o.intraday || !hold.length) return ''; const h = holdAt(String(r.date)); return h ? `<span class="kli-hold">大戶 ${f(h.percent)}%<span class="dim">（${h.date.slice(5)} 週）</span></span>` : ''; })();

@@ -10,7 +10,48 @@ let marginRange = 180;
 let klineData = { price: [], inst: [], holding: [], margin: [] };
 let klineOpts = { showInst: true, showBBand: false, indicator: null,
   showMargin: localStorage.getItem('kl_margin') === '1', showHolding: localStorage.getItem('kl_hold') === '1',
-  showMaExtra: localStorage.getItem('kl_ma') === '1' };
+  showMaExtra: false };
+
+// ---- 自訂均線（2026-11-26）：最多 6 條，每條可開關、自訂天數；存 localStorage.kl_ma_cfg ----
+const MA_COLORS = ['#f2c744', '#ff8fab', '#7aa2f7', '#3ee6ff', '#b98cff', '#ff9f43'];
+const MA_DEFAULT = [{ n: 5, on: 1 }, { n: 10, on: 0 }, { n: 20, on: 1 }, { n: 60, on: 0 }, { n: 120, on: 0 }, { n: 240, on: 0 }];
+let maCfg = (() => {
+  try {
+    const c = JSON.parse(localStorage.getItem('kl_ma_cfg') || 'null');
+    if (Array.isArray(c) && c.length === 6) return c;
+  } catch (e) {}
+  const c = MA_DEFAULT.map(x => ({ ...x }));
+  if (localStorage.getItem('kl_ma') === '1') { c[1].on = 1; c[3].on = 1; }  // 舊版「均線+」開著 → MA10、MA60 一起開
+  return c;
+})();
+const maActive = () => maCfg.map((m, i) => ({ n: m.n, on: m.on, color: MA_COLORS[i] })).filter(m => m.on && m.n >= 2);
+
+function openMaSettings() {
+  const rows = maCfg.map((m, i) => `<div class="ma-row">
+      <label class="ma-on"><input type="checkbox" data-i="${i}" ${m.on ? 'checked' : ''}><span class="dot" style="background:${MA_COLORS[i]}"></span></label>
+      <span>MA</span><input class="ma-n" type="number" inputmode="numeric" min="2" max="400" step="1" data-i="${i}" value="${m.n}"><span class="dim">日</span>
+    </div>`).join('');
+  showModal(`<div class="modal-title">均線設定</div>
+    <div class="ma-list">${rows}</div>
+    <p class="dim" style="font-size:12px;margin:6px 0 10px">勾選要顯示的線、輸入天數（2～400）。日 K 是「天」，60 分 K 是「60 分鐘根數」，5 分 K 是「5 分鐘根數」。設定會記在這支手機。</p>
+    <div style="display:flex;gap:8px">
+      <button class="modal-btn" id="ma-reset" style="flex:1;text-align:center">恢復預設</button>
+      <button class="modal-btn" id="ma-ok" style="flex:1;text-align:center;color:var(--accent)">套用</button>
+    </div>`);
+  $('#ma-reset').addEventListener('click', () => { maCfg = MA_DEFAULT.map(x => ({ ...x })); saveMa(); closeModal(); });
+  $('#ma-ok').addEventListener('click', () => {
+    $$('.ma-list input[type=checkbox]').forEach(el => { maCfg[+el.dataset.i].on = el.checked ? 1 : 0; });
+    $$('.ma-list .ma-n').forEach(el => { const v = Math.round(Number(el.value)); if (v >= 2 && v <= 400) maCfg[+el.dataset.i].n = v; });
+    saveMa();
+    closeModal();
+  });
+}
+function saveMa() {
+  try { localStorage.setItem('kl_ma_cfg', JSON.stringify(maCfg)); } catch (e) {}
+  // 天數變長（例如 MA240）時要多抓暖身資料 → 重新載入；不然只要重畫
+  const need = Math.max(...maActive().map(m => m.n), 0);
+  if (klineInterval === '1d' && need * 1.5 > (klineData.warm || 130)) loadKline(); else redrawKline(true);
+}
 let klineInterval = '1d';
 let instUnit = 1000; // 1000 = 張, 1 = 股
 let loadedTabs = { rt: false, kline: false, inst: false, margin: false, branch: false, revenue: false, profit: false, holders: false };
@@ -982,6 +1023,9 @@ function klineContainerHeight() {
   return 320 + extraPanes * 85;
 }
 
+// 日 K 暖身天數（日曆天）：至少 130 天，最長的均線要再多（MA240 ≈ 360 天）
+function warmDays() { return Math.max(130, Math.ceil(Math.max(0, ...maActive().map(m => m.n)) * 1.5)); }
+
 // 籌碼分布（2026-11-22，仿籌碼K線）：區間內每根日 K 的成交量平均分到「最低～最高」之間的價位，
 // 加總成 24 個價格區段的橫條圖 → 看哪個價位成交最密集（常被當成套牢區或支撐區），標出目前價格。
 function paintVolumeProfile() {
@@ -1028,7 +1072,7 @@ function redrawKline(keepRange = false) {
     showInst: klineOpts.showInst && klineInterval === '1d',
     showHolding: klineOpts.showHolding && klineInterval === '1d',
     showMargin: klineOpts.showMargin && klineInterval === '1d',
-    showMaExtra: klineOpts.showMaExtra,
+    maList: maActive(),
     showBBand: klineOpts.showBBand,
     indicator: klineOpts.indicator,
     intraday: klineInterval !== '1d',
@@ -1040,8 +1084,7 @@ function redrawKline(keepRange = false) {
   // 圖例：只列畫面上真的有的線
   const lg = $('#kl-legend');
   if (lg) {
-    const it = [['#f2c744', 'MA5'], ['#7aa2f7', 'MA20']];
-    if (klineOpts.showMaExtra) it.push(['#ff8fab', 'MA10'], ['#3ee6ff', 'MA60']);
+    const it = maActive().map(m => [m.color, `MA${m.n}`]);
     if (klineOpts.showBBand) it.push(['rgba(242,199,68,0.6)', '布林']);
     lg.innerHTML = it.map(([c, t]) => `<span><span class="dot" style="background:${c}"></span>${t}</span>`).join('') + '<span class="dim">長按 K 線滑動看當天</span>';
   }
@@ -1094,7 +1137,7 @@ async function loadKline(silent = false) {
     // Daily rows always drive the header (prev-close fallback); intraday bars only draw the chart.
     const [priceRows, instRows, chartRows] = await Promise.all([
       // 2026-11-26：日 K 多抓 130 天，讓 MA60、KD、MACD、RSI、布林在畫面最左邊就已經算好（畫面只顯示選的區間）
-      Api.daily(currentStock, intraday ? 10 : klineRange + 130),
+      Api.daily(currentStock, intraday ? 10 : klineRange + warmDays()),
       intraday ? Promise.resolve([]) : Api.institutional(currentStock.stock_id, klineRange).catch(() => []),
       intraday ? Backend.kbar(currentStock, klineInterval) : Promise.resolve(null),
     ]);
@@ -1105,7 +1148,7 @@ async function loadKline(silent = false) {
     const keep = klineData.stock === stock.stock_id ? klineData : {};
     const cutoff = daysAgo(klineRange);
     const win = intraday ? null : drawRows.filter(r => r.date >= cutoff).length;  // 畫面上要顯示幾根（其餘是暖身用）
-    klineData = { price: drawRows, inst: instRows, holding: keep.holding || [], margin: keep.range === klineRange ? (keep.margin || []) : [], stock: stock.stock_id, range: klineRange, win };
+    klineData = { price: drawRows, inst: instRows, holding: keep.holding || [], margin: keep.range === klineRange ? (keep.margin || []) : [], stock: stock.stock_id, range: klineRange, win, warm: warmDays() };
     redrawKline(silent);
     if (!intraday) klineLoadLayers(stock, tk);
 
@@ -1243,6 +1286,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('#btn-star').addEventListener('click', onStarClick);
   $('#btn-prev').addEventListener('click', () => stepStock(-1));
+  $('#kl-ma-btn').addEventListener('click', openMaSettings);
   $('#btn-next').addEventListener('click', () => stepStock(1));
 
   $$('.tab-btn').forEach(btn => {
