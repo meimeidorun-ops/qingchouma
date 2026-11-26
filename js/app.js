@@ -4,6 +4,8 @@ let stockIndexReady = false;
 let currentStock = null;    // { stock_id, stock_name }
 let charts = { kline: null, inst: null, revenue: null, profit: null, holders: null };
 let klineRange = 180;
+const KL_ZOOM_BARS = 60;   // K 線預設只顯示最近 60 根（約 3 個月），看起來比較大
+let klineFull = false;     // true＝顯示選定區間全部（按了區間按鈕之後）
 let instRange = 90;
 let branchPeriod = 1;
 let marginRange = 180;
@@ -1130,11 +1132,15 @@ function redrawKline(keepRange = false) {
     showBBand: klineOpts.showBBand,
     indicator: klineOpts.indicator,
     intraday: klineInterval !== '1d',
-    visibleBars: klineInterval === '1d' ? klineData.win : { '60m': 100, '5m': 160 }[klineInterval],
+    // 2026-11-26：預設放大＝日 K 先顯示最近 KL_ZOOM_BARS 根（資料仍載入整個區間，手指縮放／左滑看更多）；
+    // 按了區間按鈕（3月／半年／1年／2年）＝要看那整段 → klineFull，同一次開 App 內維持
+    visibleBars: klineInterval === '1d' ? (klineFull ? klineData.win : Math.min(klineData.win || KL_ZOOM_BARS, KL_ZOOM_BARS)) : { '60m': 40, '5m': 66 }[klineInterval],
     infoEl: $('#kl-info'),
     liveLast: klineInterval === '1d' && twMarketOpen(),
   });
   paintVolumeProfile();
+  // 預設放大時區間按鈕都不亮（畫面不是那整段）；按了才亮
+  $$('#kline-range .range-btn').forEach(b => b.classList.toggle('active', klineFull && Number(b.dataset.range) === klineRange));
   // 圖例：只列畫面上真的有的線
   const lg = $('#kl-legend');
   if (lg) {
@@ -1371,6 +1377,7 @@ document.addEventListener('DOMContentLoaded', () => {
       $$('#kline-range .range-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       klineRange = Number(btn.dataset.range);
+      klineFull = true;
       loadKline();
     });
   });
