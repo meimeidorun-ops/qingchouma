@@ -1140,7 +1140,7 @@ function redrawKline(keepRange = false) {
   if (lg) {
     const it = maActive().map(m => [m.color, `MA${m.n}`]);
     if (klineOpts.showBBand) it.push(['rgba(242,199,68,0.6)', '布林']);
-    if (klineOpts.showMain && klineInterval === '1d') it.push(['rgba(255,143,171,0.85)', (klineData.main || []).length ? '主力買／青＝賣（近20日）' : '主力載入中…']);
+    if (klineOpts.showMain && klineInterval === '1d') it.push(['rgba(255,143,171,0.85)', (klineData.main || []).length ? '主力（粉＝買超、青＝賣超，近 20 日）' : '主力載入中…']);
     lg.innerHTML = it.map(([c, t]) => `<span><span class="dot" style="background:${c}"></span>${t}</span>`).join('') + '<span class="dim">長按 K 線滑動看當天</span>';
   }
   if (range && charts.kline) {
