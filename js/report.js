@@ -46,10 +46,15 @@ async function openReport() {
     const stocks = [...box.querySelectorAll('.rep-row[data-id]')].map(el => ({ stock_id: el.dataset.id, stock_name: el.querySelector('b').textContent }));
     box.querySelectorAll('.rep-row[data-id]').forEach(el => el.addEventListener('click', () => {
       navStocks = stocks;
+      repRemember();
+      Rep.fromStock = true;
+      if (typeof Rank !== 'undefined') Rank.fromRank = false;
       openStock({ stock_id: el.dataset.id, stock_name: el.querySelector('b').textContent });
     }));
     box.querySelectorAll('.rep-row[data-grp]').forEach(el => el.addEventListener('click', () => {
       const g = el.dataset.grp;
+      repRemember();
+      Rep.fromRank = true;
       Rank.cat = 'sector'; Rank.sec = 'chg'; Rank.secKind = /^c_/.test(g) ? 'con' : 'ind'; Rank.secCode = g;
       $('#rk-list').innerHTML = '';
       openRank();
@@ -59,7 +64,34 @@ async function openReport() {
   }
 }
 
-$('#rep-bar').addEventListener('click', openReport);
-$('#btn-report-back').addEventListener('click', () => goHome());
+// 從報告點進個股／族群 → 返回鍵回到報告原本的捲動位置（跟排行、雷達同一招：capture 階段先攔）
+const Rep = { scroll: 0, fromStock: false, fromRank: false };
+function repRemember() { const sc = $('#screen-report .pf-scroll'); Rep.scroll = sc ? sc.scrollTop : 0; }
+async function repBack() {
+  await openReport();
+  const sc = $('#screen-report .pf-scroll');
+  if (sc) sc.scrollTop = Rep.scroll || 0;
+}
+$('#btn-back').addEventListener('click', e => {
+  if (!Rep.fromStock || (typeof Rank !== 'undefined' && Rank.fromRank)) return;  // 報告→族群→個股：先回排行（排行那邊處理）
+  e.stopImmediatePropagation();
+  Rep.fromStock = false;
+  stopRtTimer();
+  repBack();
+}, true);
+$('#btn-rk-back').addEventListener('click', e => {
+  if (!Rep.fromRank) return;
+  e.stopImmediatePropagation();
+  Rep.fromRank = false;
+  if (typeof Rank !== 'undefined') Rank.fromRank = false;
+  repBack();
+}, true);
+// 中途改去別的畫面（首頁、大盤、國際…）就忘掉「從報告來的」，之後的返回照舊
+{
+  const orig = showScreen;
+  showScreen = id => { if (!['screen-detail', 'screen-report', 'screen-rank'].includes(id)) Rep.fromStock = Rep.fromRank = false; orig(id); };  // eslint-disable-line no-global-assign
+}
+$('#rep-bar').addEventListener('click', () => { Rep.fromStock = Rep.fromRank = false; openReport(); });
+$('#btn-report-back').addEventListener('click', () => { Rep.fromStock = Rep.fromRank = false; goHome(); });
 paintRepBar();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) paintRepBar(); });
