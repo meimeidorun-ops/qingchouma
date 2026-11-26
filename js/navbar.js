@@ -1,6 +1,6 @@
 // 底部導覽列（2026-11-22）：仿籌碼K線，把首頁上方的 📊🎯💼⚙ 和各大功能收到最下面一排。
 // 主要畫面（自選、大盤、排行、國際）顯示；個股頁、設定頁、搜尋時不顯示（不擋內容）。
-const NAV_SCREENS = { 'screen-home': 'home', 'screen-index': 'index', 'screen-rank': 'rank', 'screen-global': 'global', 'screen-radar': 'more', 'screen-portfolio': 'more', 'screen-panic': 'more' };
+const NAV_SCREENS = { 'screen-home': 'home', 'screen-index': 'index', 'screen-rank': 'rank', 'screen-global': 'global', 'screen-radar': 'more', 'screen-portfolio': 'more', 'screen-panic': 'more', 'screen-report': 'more' };
 
 (() => {
   const nav = document.createElement('nav');
@@ -27,6 +27,7 @@ const NAV_SCREENS = { 'screen-home': 'home', 'screen-index': 'index', 'screen-ra
   const openMore = () => {
     showModal(`<div class="modal-title">更多功能</div>
       <div class="bn-more">
+        <button data-m="report"><span>📰</span>盤後報告<small>族群強弱、資金焦點、自選股重點</small></button>
         <button data-m="panic"><span>🔥</span>極端行情選股<small>恐慌期歷史上表現較好的條件</small></button>
         <button data-m="radar"><span>🎯</span>權證分點雷達<small>全市場分點買權證排行</small></button>
         <button data-m="portfolio"><span>💼</span>操作計畫<small>持股紀錄與建議</small></button>
@@ -38,6 +39,7 @@ const NAV_SCREENS = { 'screen-home': 'home', 'screen-index': 'index', 'screen-ra
       closeModal();
       const m = b.dataset.m;
       if (m === 'panic') { if (typeof openPanic === 'function') openPanic(); return; }
+      if (m === 'report') { if (typeof openReport === 'function') openReport(); return; }
       const btn = document.getElementById(`btn-${m}`);
       if (btn) btn.click();
     }));

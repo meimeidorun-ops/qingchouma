@@ -236,7 +236,7 @@ async function paintIndexBar() {
 const Rank = { cat: localStorage.getItem('rk_cat') || 'up', dir: localStorage.getItem('rk_dir') || 'buy', n: Number(localStorage.getItem('rk_n') || 1),
   noEtf: localStorage.getItem('rk_noetf') === '1', liq: localStorage.getItem('rk_liq') !== '0', safe: false, seq: 0 };
 const RK_CATS = [['screen', '🔎選股'], ['up', '漲幅'], ['down', '跌幅'], ['money', '成交值'], ['f', '外資'], ['t', '投信'], ['d', '自營'], ['ft', '土洋同步'], ['fta', '三大同步'], ['margin', '融資'], ['dt', '當沖'], ['sbl', '借券'], ['big', '大戶'], ['val', '估值'], ['rev', '營收'], ['ann', '公告'], ['sector', '類股'], ['etf', 'ETF'], ['score', '評分']];
-const RK_SEC = [['chg', '漲跌幅'], ['money', '成交值'], ['f', '外資買超'], ['t', '投信買超']];
+const RK_SEC = [['chg', '漲跌幅'], ['chg5', '5日漲跌'], ['money', '成交值'], ['f', '外資買超'], ['t', '投信買超']];
 const RK_ETF = [['prem', '溢價'], ['disc', '折價'], ['in', '資金流入'], ['out', '資金流出'], ['size', '規模'], ['in5', '5日流入'], ['out5', '5日流出']];
 const rkIsPrice = () => ['up', 'down', 'money'].includes(Rank.cat);
 const rkIsInst = () => ['f', 't', 'd', 'ft', 'fta'].includes(Rank.cat);
@@ -282,7 +282,9 @@ function paintRankBars() {
     sub = RK_ETF.map(([v, l]) => btn('etf', v, l, Rank.etf === v)).join('');
   } else if (Rank.cat === 'sector') {
     if (!RK_SEC.some(([v]) => v === Rank.sec)) Rank.sec = 'chg';
-    sub = (Rank.secCode ? btn('secback', '1', '‹ 全部類股', false) : '') + RK_SEC.map(([v, l]) => btn('sec', v, l, Rank.sec === v)).join('');
+    if (!Rank.secKind) Rank.secKind = localStorage.getItem('rk_seckind') || 'ind';
+    sub = (Rank.secCode ? btn('secback', '1', `‹ 全部${Rank.secKind === 'con' ? '概念' : '類股'}`, false) : btn('seckind', 'ind', '產業', Rank.secKind === 'ind') + btn('seckind', 'con', '概念股', Rank.secKind === 'con') + '<span style="width:8px"></span>') +
+      RK_SEC.map(([v, l]) => btn('sec', v, l, Rank.sec === v)).join('');
   }
   if (!['score', 'etf', 'sector', 'screen', 'dt', 'sbl', 'big', 'ann', 'val', 'rev'].includes(Rank.cat)) sub += '<span style="width:8px"></span>' + btn('toggle', 'noetf', '排除 ETF', Rank.noEtf) + (rkIsPrice() && Rank.cat !== 'money' ? btn('toggle', 'liq', '成交值≥1億', Rank.liq) : '');
   $('#rk-sub').innerHTML = sub;
@@ -485,44 +487,52 @@ async function openRank() {
       note += `｜價格 ${pxNote}`;
     } else if (Rank.cat === 'sector') {
       // 類股：產業分類 mk/ind.json；價格用即時（成交值前 700 檔有即時，其他用收盤）；法人用 inst.json 最新一天
-      const [I, inst] = await Promise.all([Mk.load('ind'), Mk.load('inst').catch(() => null)]);
+      // 2026-11-26：也可以看「概念股」（mk/concept.json，一檔可以在好幾個概念裡）；多「5日漲跌」（day.json pct5，用 20 日均成交值加權）
+      const con = Rank.secKind === 'con';
+      const [I, inst, C] = await Promise.all([Mk.load('ind'), Mk.load('inst').catch(() => null), con ? Mk.load('concept') : null]);
+      const names = con ? C.names : I.names;
+      const members = new Map();   // 群組 → [代號]
+      if (con) for (const [g, ids] of Object.entries(C.mem)) members.set(g, ids);
+      else for (const [id, code] of Object.entries(I.s)) { if (!members.has(code)) members.set(code, []); members.get(code).push(id); }
       const k = Rank.sec, L = inst ? inst.days.length : 0;
       const instAmt = (id, w) => { const a = inst && inst.s[id] && inst.s[id][w]; const c = (px.get(id) || day.get(id) || {}).close; return a && c ? a[L - 1] * c : 0; };  // 張×元＝千元
       if (!Rank.secCode) {
-        const S = new Map();
-        for (const [id, code] of Object.entries(I.s)) {
-          const p = px.get(id) || day.get(id);
-          if (!p || p.pct == null) continue;
-          let s = S.get(code);
-          if (!s) S.set(code, s = { code, w: 0, wp: 0, up: 0, dn: 0, n: 0, money: 0, f: 0, t: 0, best: null });
-          const m = p.money || 0;
-          s.w += m; s.wp += p.pct * m; s.n++; s.money += m;
-          if (p.pct > 0) s.up++; else if (p.pct < 0) s.dn++;
-          s.f += instAmt(id, 0); s.t += instAmt(id, 1);
-          if (!s.best || m > s.best.m) s.best = { id, m, name: p.name || (day.get(id) || {}).name, pct: p.pct };
+        const S = [];
+        for (const [code, ids] of members) {
+          const s = { code, w: 0, wp: 0, w20: 0, wp5: 0, up: 0, dn: 0, n: 0, money: 0, f: 0, t: 0, best: null };
+          for (const id of ids) {
+            const p = px.get(id) || day.get(id), d0 = day.get(id);
+            if (!p || p.pct == null) continue;
+            const m = p.money || 0;
+            s.w += m; s.wp += p.pct * m; s.n++; s.money += m;
+            if (d0 && d0.pct5 != null && d0.money20) { s.w20 += d0.money20; s.wp5 += d0.pct5 * d0.money20; }
+            if (p.pct > 0) s.up++; else if (p.pct < 0) s.dn++;
+            s.f += instAmt(id, 0); s.t += instAmt(id, 1);
+            if (!s.best || m > s.best.m) s.best = { id, m, name: p.name || (d0 || {}).name, pct: p.pct };
+          }
+          S.push(s);
         }
-        rows = [...S.values()].filter(s => s.n >= 3 && s.w > 0).map(s => {
-          const pct = s.wp / s.w;
-          const v = k === 'chg' ? pct : k === 'money' ? s.money : k === 'f' ? s.f : s.t;
-          return { id: s.code, sector: s.code, name: I.names[s.code], px: { close: null, pct }, cls: k === 'chg' ? signClass(pct) : signClass(v), v,
-            main: k === 'chg' ? '' : k === 'money' ? `${numFmt(s.money / 100, 0)} 億` : `${v > 0 ? '+' : ''}${numFmt(v / 1e5, 1)} 億`,
-            sub: `${s.n} 檔｜漲 ${s.up}・跌 ${s.dn}｜成交 ${numFmt(s.money / 100, 0)} 億｜外資 ${s.f >= 0 ? '+' : ''}${numFmt(s.f / 1e5, 1)} 億｜投信 ${s.t >= 0 ? '+' : ''}${numFmt(s.t / 1e5, 1)} 億${s.best ? `｜龍頭 ${s.best.name || s.best.id}` : ''}` };
+        rows = S.filter(s => s.n >= (con ? 2 : 3) && s.w > 0).map(s => {
+          const pct = s.wp / s.w, pct5 = s.w20 ? s.wp5 / s.w20 : null;
+          const v = k === 'chg' ? pct : k === 'chg5' ? (pct5 ?? -999) : k === 'money' ? s.money : k === 'f' ? s.f : s.t;
+          return { id: s.code, sector: s.code, name: names[s.code], px: { close: null, pct }, cls: signClass(k === 'chg5' ? pct5 : k === 'chg' ? pct : v), v,
+            main: k === 'chg' ? '' : k === 'chg5' ? `5日 ${pct5 == null ? '—' : pctFmt(pct5)}` : k === 'money' ? `${numFmt(s.money / 100, 0)} 億` : `${v > 0 ? '+' : ''}${numFmt(v / 1e5, 1)} 億`,
+            sub: `${s.n} 檔｜漲 ${s.up}・跌 ${s.dn}｜5日 ${pct5 == null ? '—' : pctFmt(pct5)}｜成交 ${numFmt(s.money / 100, 0)} 億｜外資 ${s.f >= 0 ? '+' : ''}${numFmt(s.f / 1e5, 1)} 億｜投信 ${s.t >= 0 ? '+' : ''}${numFmt(s.t / 1e5, 1)} 億${s.best ? `｜龍頭 ${s.best.name || s.best.id}` : ''}` };
         });
         rows.sort((a, b) => b.v - a.v);
-        note = `類股｜${pxNote}｜漲跌幅＝成交值加權平均；法人＝${inst ? inst.days[L - 1].slice(5) : '—'} 買賣超金額｜點類股看成分股`;
+        note = `${con ? '概念股（自訂名單）' : '類股'}｜${pxNote}｜漲跌幅＝成交值加權平均；法人＝${inst ? inst.days[L - 1].slice(5) : '—'} 買賣超金額｜點${con ? '概念' : '類股'}看成分股`;
       } else {
-        for (const [id, code] of Object.entries(I.s)) {
-          if (code !== Rank.secCode) continue;
-          const p = px.get(id) || day.get(id);
+        for (const id of members.get(Rank.secCode) || []) {
+          const p = px.get(id) || day.get(id), d0 = day.get(id) || {};
           if (!p || p.pct == null) continue;
           const f = instAmt(id, 0), t = instAmt(id, 1);
-          const v = k === 'chg' ? p.pct : k === 'money' ? (p.money || 0) : k === 'f' ? f : t;
-          rows.push({ id, name: p.name || (day.get(id) || {}).name, px: p, cls: signClass(v), v,
-            main: k === 'chg' ? '' : k === 'money' ? `${numFmt((p.money || 0) / 100, 1)} 億` : `${v > 0 ? '+' : ''}${numFmt(v / 1e5, 1)} 億`,
-            sub: `成交 ${numFmt((p.money || 0) / 100, 1)} 億｜外資 ${f >= 0 ? '+' : ''}${numFmt(f / 1e5, 1)} 億｜投信 ${t >= 0 ? '+' : ''}${numFmt(t / 1e5, 1)} 億` });
+          const v = k === 'chg' ? p.pct : k === 'chg5' ? (d0.pct5 ?? -999) : k === 'money' ? (p.money || 0) : k === 'f' ? f : t;
+          rows.push({ id, name: p.name || d0.name, px: p, cls: signClass(k === 'chg5' ? d0.pct5 : v), v,
+            main: k === 'chg' ? '' : k === 'chg5' ? `5日 ${d0.pct5 == null ? '—' : pctFmt(d0.pct5)}` : k === 'money' ? `${numFmt((p.money || 0) / 100, 1)} 億` : `${v > 0 ? '+' : ''}${numFmt(v / 1e5, 1)} 億`,
+            sub: `成交 ${numFmt((p.money || 0) / 100, 1)} 億｜5日 ${d0.pct5 == null ? '—' : pctFmt(d0.pct5)}｜外資 ${f >= 0 ? '+' : ''}${numFmt(f / 1e5, 1)} 億｜投信 ${t >= 0 ? '+' : ''}${numFmt(t / 1e5, 1)} 億` });
         }
         rows.sort((a, b) => b.v - a.v);
-        note = `${I.names[Rank.secCode]}（${rows.length} 檔）｜${pxNote}`;
+        note = `${names[Rank.secCode]}（${rows.length} 檔）｜${pxNote}`;
       }
     } else if (Rank.cat === 'etf') {
       // ETF：即時折溢價（快速後端）或收盤檔；5 日流入用 etf_hist 的單位數變化 × 淨值
@@ -626,6 +636,7 @@ $('#rk-sub').addEventListener('click', e => {
   else if (ds.revk) Rank.revk = ds.revk;
   else if (ds.sblk) Rank.sblk = ds.sblk;
   else if (ds.secback) Rank.secCode = null;
+  else if (ds.seckind) { Rank.secKind = ds.seckind; localStorage.setItem('rk_seckind', ds.seckind); }
   else if (ds.toggle === 'noetf') { Rank.noEtf = !Rank.noEtf; localStorage.setItem('rk_noetf', Rank.noEtf ? '1' : '0'); }
   else if (ds.toggle === 'liq') { Rank.liq = !Rank.liq; localStorage.setItem('rk_liq', Rank.liq ? '1' : '0'); }
   else return;

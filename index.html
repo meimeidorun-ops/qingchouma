@@ -14,7 +14,7 @@
 <script>
 // 版本號：每次改前端跟 sw.js 的 CACHE 一起 +1。所有 js/css 網址都帶這個版本，
 // 剛部署完 CDN 還沒全部換新時，才不會載到「新舊混在一起」的檔案（2026-10-13 發生過：新 radar.js 配舊 app.js → 載入失敗）。
-window.APP_V = '89';
+window.APP_V = '90';
 document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -40,6 +40,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
     <div class="idx-bar" id="idx-bar" hidden></div>
     <div class="temp-bar" id="temp-bar" hidden></div>
     <div class="glb-bar" id="glb-bar" hidden></div>
+    <div class="rep-bar" id="rep-bar" hidden></div>
     <div class="group-bar">
       <div class="group-tabs" id="group-tabs"></div>
       <button class="icon-btn" id="btn-group-menu" aria-label="管理清單">⋯</button>
@@ -352,6 +353,15 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
   </section>
 
   <!-- ================= 極端行情選股（2026-11-22） ================= -->
+  <section id="screen-report" class="screen">
+    <div class="topbar">
+      <button class="back-btn" id="btn-report-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
+      <div class="title">📰 盤後報告</div>
+      <div class="spacer"></div>
+    </div>
+    <div class="pf-scroll"><div id="report-body"></div></div>
+  </section>
+
   <section id="screen-panic" class="screen">
     <div class="topbar">
       <button class="back-btn" id="btn-panic-back" style="background:none;border:none;color:var(--text);font-size:20px;">‹</button>
@@ -502,7 +512,7 @@ document.write('<link rel="stylesheet" href="css/style.css?v=' + APP_V + '">');
 
 <script>
 // 載入順序有意義（共用全域）；新增 js 檔加在這個清單裡
-['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum', 'wlextra', 'panic', 'insight', 'peer', 'navbar']
+['api', 'backend', 'indicators', 'charts', 'app', 'tab-chips', 'tab-fundamental', 'import', 'portfolio', 'radar', 'market', 'taiex', 'temp', 'etf', 'global', 'screener', 'news', 'notice', 'chipsum', 'wlextra', 'panic', 'insight', 'peer', 'report', 'navbar']
   .forEach(n => document.write('<script src="js/' + n + '.js?v=' + APP_V + '"><\/script>'));
 </script>
 <script>
